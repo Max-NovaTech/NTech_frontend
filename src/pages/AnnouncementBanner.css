@@ -1,0 +1,14 @@
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+.marquee-content {
+  display: flex;
+  animation: marquee 40s linear infinite;
+  padding-right: 2rem; /* Spacing between repeated content */
+}
