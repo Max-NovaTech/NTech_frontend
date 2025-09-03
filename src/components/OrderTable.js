@@ -27,7 +27,6 @@ const TotalRequestsComponent = () => {
     setCurrentPage(1);
     setShowNewRequestsOnly(false);
   };
-
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [allItems, setAllItems] = useState([]);
@@ -39,18 +38,30 @@ const TotalRequestsComponent = () => {
     return savedTime ? new Date(savedTime) : null;
   });
 
+  // Removed duplicate useEffect - keeping the one at line 182
   const [hasNewRequests, setHasNewRequests] = useState(false);
   const [showNewRequestsOnly, setShowNewRequestsOnly] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [refreshInterval, setRefreshInterval] = useState(120);
+  const [refreshInterval, setRefreshInterval] = useState(120); // seconds - increased default to reduce server load
   const audioRef = useRef(null);
   const [ticker, setTicker] = useState(0);
 
   const [orderIdFilter, setOrderIdFilter] = useState("");
   const [phoneNumberFilter, setPhoneNumberFilter] = useState("");
+  // Use deferred values for instant input with longer delay
   const deferredOrderIdFilter = useDeferredValue(orderIdFilter);
   const deferredPhoneNumberFilter = useDeferredValue(phoneNumberFilter);
+  
+  // Debounced filter function to reduce expensive operations
+  const debounceTimeout = useRef(null);
+  const [debouncedFilters, setDebouncedFilters] = useState({
+    orderId: '',
+    phoneNumber: '',
+    product: '',
+    status: '',
+    date: ''
+  });
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -62,7 +73,7 @@ const TotalRequestsComponent = () => {
   const [selectedDate, setSelectedDate] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
-  const [sortOrder, setSortOrder] = useState("newest");
+  const [sortOrder, setSortOrder] = useState("newest"); // "newest" or "oldest"
 
   // Modal for status update
   const [isOpenStatus, setIsOpenStatus] = useState(false);
@@ -73,83 +84,50 @@ const TotalRequestsComponent = () => {
   const prevOrderIdsRef = useRef(new Set());
   const intervalRef = useRef(null);
 
-  // PERFORMANCE OPTIMIZATION: Cache processed items to avoid reprocessing
-  const processedItemsCache = useRef(new Map());
-  
-  // PERFORMANCE OPTIMIZATION: Optimized data fetching with better error handling
   const fetchOrderData = useCallback(async () => {
-    if (loading) return; // Prevent concurrent requests
-    
     setLoading(true);
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
-      
+      console.log('Fetching orders from:', `${BASE_URL}/order/admin/allorder`);
       const response = await axios.get(`${BASE_URL}/order/admin/allorder`, {
-        signal: controller.signal,
+        timeout: 30000, // 30 second timeout
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json'
         },
         params: {
-          limit: 500, // Increased to reduce pagination calls
+          limit: 100,
           offset: 0
         }
       });
-      
-      clearTimeout(timeoutId);
+      console.log('API Response:', response.data);
       const currentTime = new Date();
 
+      // Process the data
       if (Array.isArray(response.data)) {
-        // PERFORMANCE OPTIMIZATION: Batch process items more efficiently
-        const itemsList = [];
-        const currentOrderIds = new Set();
-        
-        // Use for loop instead of flatMap for better performance
-        for (let i = 0; i < response.data.length; i++) {
-          const order = response.data[i];
-          currentOrderIds.add(order.id);
-          
-          if (Array.isArray(order.items)) {
-            // Pre-calculate commonly used values
-            const orderCreatedAt = order.createdAt;
-            const isNew = new Date(orderCreatedAt) > new Date(Date.now() - 5 * 60 * 1000);
-            
-            for (let j = 0; j < order.items.length; j++) {
-              const item = order.items[j];
-              // Check cache first
-              const cacheKey = `${order.id}-${item.id}`;
-              
-              if (!processedItemsCache.current.has(cacheKey) || 
-                  processedItemsCache.current.get(cacheKey).createdAt !== orderCreatedAt) {
-                
-                const processedItem = {
-                  ...item,
-                  orderId: order.id,
-                  createdAt: orderCreatedAt,
-                  user: order.user,
-                  order: {
-                    ...order,
-                    items: [item],
-                  },
-                  isNew,
-                  // Pre-calculate formatted values for table display
-                  formattedDate: new Date(orderCreatedAt).toISOString().split("T")[0],
-                  formattedTime: new Date(orderCreatedAt).toLocaleTimeString(),
-                  status: item.status || order.items[0]?.status,
-                  productDescription: item.product?.description?.replace(/\D+$/, "") || "N/A"
-                };
-                
-                processedItemsCache.current.set(cacheKey, processedItem);
-              }
-              
-              itemsList.push(processedItemsCache.current.get(cacheKey));
-            }
-          }
-        }
+        const itemsList = response.data.flatMap((order) =>
+          Array.isArray(order.items)
+            ? order.items.map((item) => ({
+                ...item,
+                orderId: order.id,
+                createdAt: order.createdAt,
+                user: order.user,
+                order: {
+                  ...order,
+                  items: [item], // Only include the current item to avoid status mix-ups
+                },
+                isNew: new Date(order.createdAt) > new Date(Date.now() - 5 * 1000),
+              }))
+            : []
+        );
 
-        // Check for new items
+        // Check for new items since last fetch
+        //const newItems = itemsList.filter(item => item.isNew).length;
+
+
+        const currentOrderIds = new Set(response.data.map(order => order.id));
         const prevOrderIds = prevOrderIdsRef.current;
+
+        // On first load, just set the initial order IDs
         if (prevOrderIds.size === 0) {
           prevOrderIdsRef.current = currentOrderIds;
         } else {
@@ -176,18 +154,32 @@ const TotalRequestsComponent = () => {
         prevOrderIdsRef.current = currentOrderIds;
         setAllItems(itemsList);
         setLastFetchTime(currentTime);
-        localStorage.setItem("lastFetchTime", currentTime.toISOString());
+        localStorage.setItem("lastFetchTime", currentTime.toISOString()); // Persist the time
       }
     } catch (error) {
-      if (error.name === 'AbortError') {
-        console.error('Request was aborted due to timeout');
-      } else {
-        console.error("Error fetching order data:", error);
+      console.error("Error fetching order data:", error);
+      console.error("Error details:", {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        url: `${BASE_URL}/order/admin/allorder`
+      });
+      
+      // Show user-friendly error message
+      if (error.code === 'ECONNABORTED') {
+        console.error('Request timeout - API is taking too long to respond');
+      } else if (error.response?.status === 404) {
+        console.error('API endpoint not found');
+      } else if (error.response?.status >= 500) {
+        console.error('Server error - API is down or having issues');
+      } else if (!error.response) {
+        console.error('Network error - unable to reach API');
       }
     } finally {
       setLoading(false);
     }
-  }, [notificationsEnabled, loading]); // Added loading to deps
+  }, [notificationsEnabled]);
 
   // Request notification permission when component mounts
   useEffect(() => {
@@ -195,9 +187,11 @@ const TotalRequestsComponent = () => {
       Notification.requestPermission();
     }
 
-    const audio = new Audio("/notification-sound.mp3");
+    // Create audio element for notification sound
+    const audio = new Audio("/notification-sound.mp3"); // You'll need to add this file to your public directory
     audioRef.current = audio;
 
+    // Clean up on unmount
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -205,7 +199,7 @@ const TotalRequestsComponent = () => {
     };
   }, []);
 
-  // PERFORMANCE OPTIMIZATION: Debounced auto-refresh
+  // Set up auto-refresh interval effect - optimized
   useEffect(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -229,19 +223,20 @@ const TotalRequestsComponent = () => {
     fetchOrderData();
   }, [fetchOrderData]);
 
-  // PERFORMANCE OPTIMIZATION: Reduced ticker frequency
+  // Effect to make the 'new requests' filter dynamic - optimized
   useEffect(() => {
     let interval = null;
     if (showNewRequestsOnly) {
       interval = setInterval(() => {
         setTicker(prev => prev + 1);
-      }, 60000); // Reduced to 1 minute
+      }, 30000); // Increased to 30 seconds to reduce re-renders
     }
     return () => {
       if (interval) clearInterval(interval);
     };
   }, [showNewRequestsOnly]);
 
+  // Effect to request notification permission
   useEffect(() => {
     if (notificationsEnabled && "Notification" in window && Notification.permission !== "granted") {
       Notification.requestPermission();
@@ -249,10 +244,14 @@ const TotalRequestsComponent = () => {
   }, [notificationsEnabled]);
 
   const handleBatchCompleteProcessing = async () => {
+    // Get all processing orders
     const processingItems = allItems.filter(
-      (item) => item.status === "Processing"
+      (item) => item.order?.items?.[0]?.status === "Processing"
     );
 
+    console.log("Processing Items:", processingItems);
+
+    // If no processing orders, show a message
     if (processingItems.length === 0) {
       Swal.fire({
         icon: "info",
@@ -262,10 +261,14 @@ const TotalRequestsComponent = () => {
       return;
     }
 
+    // Get unique order IDs (to prevent duplicates)
     const orderIds = [
       ...new Set(processingItems.map((item) => item.order?.id)),
     ].filter(Boolean);
 
+    console.log("Unique Order IDs:", orderIds);
+
+    // Confirm with the user
     const { isConfirmed } = await Swal.fire({
       icon: "question",
       title: "Batch Update",
@@ -287,6 +290,7 @@ const TotalRequestsComponent = () => {
         },
       });
 
+      // Update each order
       const updatePromises = orderIds.map((orderId) =>
         axios.put(`${BASE_URL}/order/orders/${orderId}/status`, {
           status: "Completed",
@@ -295,21 +299,15 @@ const TotalRequestsComponent = () => {
 
       await Promise.all(updatePromises);
 
-      // PERFORMANCE OPTIMIZATION: Batch state update
+      // Update local state
       setAllItems((prevItems) =>
         prevItems.map((item) => {
-          if (item.status === "Processing" && orderIds.includes(item.order?.id)) {
-            // Update cache as well
-            const cacheKey = `${item.order.id}-${item.id}`;
-            if (processedItemsCache.current.has(cacheKey)) {
-              const cached = processedItemsCache.current.get(cacheKey);
-              cached.status = "Completed";
-              processedItemsCache.current.set(cacheKey, cached);
-            }
-            
+          if (
+            item.order?.items?.[0]?.status === "Processing" &&
+            orderIds.includes(item.order?.id)
+          ) {
             return {
               ...item,
-              status: "Completed",
               order: {
                 ...item.order,
                 items: item.order.items.map((orderItem) => ({
@@ -330,6 +328,7 @@ const TotalRequestsComponent = () => {
         timer: 2000,
       });
 
+      // Refresh data to ensure UI is in sync
       fetchOrderData();
     } catch (error) {
       console.error("Error updating order statuses:", error);
@@ -341,59 +340,48 @@ const TotalRequestsComponent = () => {
     }
   };
 
-  // PERFORMANCE OPTIMIZATION: Heavily optimized filtering with early returns and caching
+  // Optimized filtering with reduced dependencies
   const filteredOrders = useMemo(() => {
     if (!allItems.length) return [];
     
-    // Return all items if no filters are applied
-    const hasFilters = deferredOrderIdFilter || deferredPhoneNumberFilter || selectedProduct || 
-                      selectedStatusMain || selectedDate || showNewRequestsOnly || startTime || endTime;
+    let filtered = allItems;
     
-    if (!hasFilters) {
-      // Still need to sort
-      const sorted = [...allItems];
-      if (sortOrder === "newest") {
-        sorted.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      } else {
-        sorted.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-      }
-      return sorted;
-    }
+    // Early return for empty filters
+    const hasFilters = deferredOrderIdFilter || deferredPhoneNumberFilter || selectedProduct || selectedStatusMain || selectedDate || showNewRequestsOnly;
     
-    // Pre-calculate time-based filters
-    const now = Date.now();
-    const fiveMinutesAgo = now - 5 * 60 * 1000;
-    let selectedStartTime, selectedEndTime;
-    
-    if (startTime && endTime && selectedDate) {
-      selectedStartTime = new Date(`${selectedDate}T${startTime}`);
-      selectedEndTime = new Date(`${selectedDate}T${endTime}`);
-    }
-    
-    const filtered = allItems.filter((item) => {
-      // Use pre-calculated values where possible
-      const orderDateTime = new Date(item.createdAt);
-      
-      // Fast string checks first (most likely to filter out items)
-      if (deferredOrderIdFilter && !String(item.orderId).includes(deferredOrderIdFilter)) return false;
-      if (deferredPhoneNumberFilter && !String(item.mobileNumber).includes(deferredPhoneNumberFilter)) return false;
-      if (selectedProduct && item.product?.name !== selectedProduct) return false;
-      if (selectedStatusMain && item.status !== selectedStatusMain) return false;
-      
-      // Date checks
-      if (selectedDate && item.formattedDate !== selectedDate) return false;
-      
-      // Time-based checks
-      if (showNewRequestsOnly && orderDateTime.getTime() < fiveMinutesAgo) return false;
-      
-      if (selectedStartTime && selectedEndTime) {
-        if (orderDateTime < selectedStartTime || orderDateTime > selectedEndTime) return false;
-      }
+    if (hasFilters) {
+      filtered = allItems.filter((item) => {
+        if (!item.createdAt) return false;
 
-      return true;
-    });
+        // Cache date calculations
+        const orderDateTime = new Date(item.createdAt);
+        const orderDate = orderDateTime.toISOString().split("T")[0];
 
-    // Optimized sorting - use pre-calculated dates when possible
+        // New requests filter
+        if (showNewRequestsOnly) {
+          const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+          if (orderDateTime.getTime() < fiveMinutesAgo) return false;
+        }
+
+        // Quick string filters
+        if (deferredOrderIdFilter && !String(item.orderId).includes(deferredOrderIdFilter)) return false;
+        if (deferredPhoneNumberFilter && !String(item.mobileNumber).includes(deferredPhoneNumberFilter)) return false;
+        if (selectedDate && orderDate !== selectedDate) return false;
+        if (selectedProduct && item.product?.name !== selectedProduct) return false;
+        if (selectedStatusMain && item.order?.items?.[0]?.status !== selectedStatusMain) return false;
+
+        // Time range filter
+        if (startTime && endTime && selectedDate) {
+          const selectedStartTime = new Date(`${selectedDate}T${startTime}`);
+          const selectedEndTime = new Date(`${selectedDate}T${endTime}`);
+          if (orderDateTime < selectedStartTime || orderDateTime > selectedEndTime) return false;
+        }
+
+        return true;
+      });
+    }
+
+    // Optimized sorting
     if (sortOrder === "newest") {
       filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     } else {
@@ -415,21 +403,22 @@ const TotalRequestsComponent = () => {
     ticker
   ]);
 
-  // PERFORMANCE OPTIMIZATION: Memoized pagination
-  const paginationMemo = useMemo(() => {
+  // Update paginated items whenever filtered orders or page changes
+  useEffect(() => {
+    if (allItems.length > 0) {
+      console.log("Inspecting the first item in allItems:", allItems[0]);
+    }
     const indexOfLastItem = currentPage * itemsPerPage;
     const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-    return filteredOrders.slice(indexOfFirstItem, indexOfLastItem);
+    setPaginatedItems(filteredOrders.slice(indexOfFirstItem, indexOfLastItem));
   }, [filteredOrders, currentPage, itemsPerPage]);
 
-  // Update paginated items
-  useEffect(() => {
-    setPaginatedItems(paginationMemo);
-  }, [paginationMemo]);
+  // console.log("All Orders", paginatedItems)
 
   const handleViewClickStatus = (orderItemId) => {
+    // Find the item to check if it's cancelled
     const item = allItems.find((item) => item.id === orderItemId);
-    if (item?.status === "Cancelled") {
+    if (item?.order?.items?.[0]?.status === "Cancelled") {
       Swal.fire({
         icon: "warning",
         title: "Cannot Update",
@@ -438,6 +427,7 @@ const TotalRequestsComponent = () => {
       return;
     }
 
+    console.log("Order Item", orderItemId);
     setSelectedOrderId(orderItemId);
     setIsOpenStatus(true);
   };
@@ -453,40 +443,35 @@ const TotalRequestsComponent = () => {
         },
       });
 
-      await axios.put(`${BASE_URL}/order/orders/${orderId}/status`, {
-        status: "Completed",
-      }, {
+      const config = {
+        method: "put",
+        url: `${BASE_URL}/order/orders/${orderId}/status`,
         headers: {
           "Content-Type": "application/json",
         },
-      });
+        data: JSON.stringify({
+          status: "Completed",
+        }),
+      };
 
-      // PERFORMANCE OPTIMIZATION: Optimized state update
+      await axios.request(config);
+
+      // Update local state to reflect the change
       setAllItems((prevItems) =>
-        prevItems.map((item) => {
-          if (item.order?.id === orderId) {
-            // Update cache
-            const cacheKey = `${item.order.id}-${item.id}`;
-            if (processedItemsCache.current.has(cacheKey)) {
-              const cached = processedItemsCache.current.get(cacheKey);
-              cached.status = "Completed";
-              processedItemsCache.current.set(cacheKey, cached);
-            }
-            
-            return {
-              ...item,
-              status: "Completed",
-              order: {
-                ...item.order,
-                items: item.order.items.map((orderItem) => ({
-                  ...orderItem,
-                  status: "Completed",
-                })),
-              },
-            };
-          }
-          return item;
-        })
+        prevItems.map((item) =>
+          item.order?.id === orderId
+            ? {
+                ...item,
+                order: {
+                  ...item.order,
+                  items: item.order.items.map((orderItem) => ({
+                    ...orderItem,
+                    status: "Completed",
+                  })),
+                },
+              }
+            : item
+        )
       );
 
       Swal.fire({
@@ -510,6 +495,7 @@ const TotalRequestsComponent = () => {
     setLastFetchTime(currentTime);
     localStorage.setItem("lastFetchTime", currentTime.toISOString());
 
+    // Mark all items as not new
     setAllItems((prevItems) =>
       prevItems.map((item) => ({ ...item, isNew: false }))
     );
@@ -529,6 +515,8 @@ const TotalRequestsComponent = () => {
       return;
     }
 
+    console.log("Selected Order ID:", selectedOrderId);
+
     try {
       Swal.fire({
         title: "Processing...",
@@ -539,7 +527,7 @@ const TotalRequestsComponent = () => {
         },
       });
 
-      await axios.post(
+      const response = await axios.post(
         `${BASE_URL}/order/admin/process/order`,
         {
           orderItemId: selectedOrderId,
@@ -550,12 +538,17 @@ const TotalRequestsComponent = () => {
         }
       );
 
+      console.log("API Response:", response.data);
+      console.log("Request payload:", {
+        orderItemId: selectedOrderId,
+        status: selectedStatus,
+      });
+
       setAllItems((prevItems) =>
         prevItems.map((item) =>
           item.id === selectedOrderId
             ? {
                 ...item,
-                status: selectedStatus,
                 order: {
                   ...item.order,
                   items: item.order.items.map((orderItem) =>
@@ -599,17 +592,19 @@ const TotalRequestsComponent = () => {
       return;
     }
 
+    // Store pending items for later update
     const pendingItems = filteredOrders.filter(
-      (item) => item.status === "Pending"
+      (item) => item.order?.items?.[0]?.status === "Pending"
     );
     const pendingOrderIds = [
       ...new Set(pendingItems.map((item) => item.order?.id)),
     ].filter(Boolean);
 
-    // PERFORMANCE OPTIMIZATION: Pre-process data for Excel
     const dataToExport = filteredOrders.map((item) => ({
       "User Phone Number": item?.mobileNumber || "N/A",
-      "Product Description": item.productDescription + " GB",
+      "Product Description": item.product?.description
+        ? item.product.description.replace(/\D+$/, "")
+        : "N/A",
       "New Request": item.isNew ? "Yes" : "No",
     }));
 
@@ -618,7 +613,7 @@ const TotalRequestsComponent = () => {
     XLSX.utils.book_append_sheet(wb, ws, "Orders");
     XLSX.writeFile(wb, "Filtered_Orders.xlsx");
 
-    // Handle pending orders update
+    // After successful download, update the status of pending items to processing
     if (pendingOrderIds.length > 0) {
       try {
         Swal.fire({
@@ -630,6 +625,7 @@ const TotalRequestsComponent = () => {
           },
         });
 
+        // Update each pending order
         const updatePromises = pendingOrderIds.map((orderId) =>
           axios.put(`${BASE_URL}/order/orders/${orderId}/status`, {
             status: "Processing",
@@ -638,12 +634,15 @@ const TotalRequestsComponent = () => {
 
         await Promise.all(updatePromises);
 
+        // Update local state
         setAllItems((prevItems) =>
           prevItems.map((item) => {
-            if (item.status === "Pending" && pendingOrderIds.includes(item.order?.id)) {
+            if (
+              item.order?.items?.[0]?.status === "Pending" &&
+              pendingOrderIds.includes(item.order?.id)
+            ) {
               return {
                 ...item,
-                status: "Processing",
                 order: {
                   ...item.order,
                   items: item.order.items.map((orderItem) => ({
@@ -664,6 +663,7 @@ const TotalRequestsComponent = () => {
           timer: 2000,
         });
 
+        // Refresh data to ensure UI is in sync
         fetchOrderData();
       } catch (error) {
         console.error("Error updating order statuses:", error);
@@ -681,7 +681,6 @@ const TotalRequestsComponent = () => {
   };
 
   const handleRefresh = () => {
-    processedItemsCache.current.clear(); // Clear cache on manual refresh
     fetchOrderData();
     setHasNewRequests(false);
     setNewRequestsCount(0);
@@ -689,34 +688,42 @@ const TotalRequestsComponent = () => {
 
   const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
 
-  const getRowColor = useCallback((productName) => {
+  const getRowColor = (productName) => {
     if (!productName) return "";
     const name = productName.toUpperCase();
-    if (name.includes("AIRTEL TIGO")) return "bg-blue-300";
-    if (name.includes("MTN")) return "bg-yellow-100";
-    if (name.includes("TELECEL")) return "bg-red-300";
+    if (name.includes("AIRTEL TIGO")) {
+      return "bg-blue-300";
+    }
+    if (name.includes("MTN")) {
+      return "bg-yellow-100";
+    }
+    if (name.includes("TELECEL")) {
+      return "bg-red-300";
+    }
     return "";
-  }, []);
+  };
 
-  // PERFORMANCE OPTIMIZATION: Memoized statistics calculation
-  const statistics = useMemo(() => {
-    const pending = allItems.filter(item => item.status === "Pending").length;
-    const completed = allItems.filter(item => item.status === "Completed").length;
-    const processing = allItems.filter(item => item.status === "Processing").length;
-    
-    return { pending, completed, processing };
-  }, [allItems]);
+  // Calculate statistics
+  const pendingCount = allItems.filter(
+    (item) => item.order?.items?.[0]?.status === "Pending"
+  ).length;
+  const completedCount = allItems.filter(
+    (item) => item.order?.items?.[0]?.status === "Completed"
+  ).length;
+  const processingCount = allItems.filter(
+    (item) => item.order?.items?.[0]?.status === "Processing"
+  ).length;
 
   return (
     <>
       <div
         className="bg-white p-6 rounded-lg shadow-md flex items-center space-x-4 w-full md:w-auto flex-1 cursor-pointer hover:shadow-lg transform hover:-translate-y-1 transition duration-300 relative"
         onClick={() => {
-          resetAllFilters();
+          resetAllFilters(); // Reset filters before opening
           setOpen(true);
           fetchOrderData();
-          setHasNewRequests(false);
-          setNewRequestsCount(0);
+          setHasNewRequests(false); // Turn off notification indicator
+          setNewRequestsCount(0); // Reset notification count
         }}
       >
         <FileText className="w-12 h-12 text-purple-500" />
@@ -747,18 +754,18 @@ const TotalRequestsComponent = () => {
 
             <div className="flex space-x-2 mb-2 md:mb-0">
               <div className="bg-blue-100 p-2 rounded-md">
-                <span className="font-bold text-blue-700">{statistics.pending}</span>{" "}
+                <span className="font-bold text-blue-700">{pendingCount}</span>{" "}
                 Pending
               </div>
               <div className="bg-yellow-100 p-2 rounded-md">
                 <span className="font-bold text-yellow-700">
-                  {statistics.processing}
+                  {processingCount}
                 </span>{" "}
                 Processing
               </div>
               <div className="bg-green-100 p-2 rounded-md">
                 <span className="font-bold text-green-700">
-                  {statistics.completed}
+                  {completedCount}
                 </span>{" "}
                 Completed
               </div>
@@ -777,9 +784,8 @@ const TotalRequestsComponent = () => {
                 onClick={handleRefresh}
                 className="bg-blue-500 text-white p-2 rounded-full hover:bg-blue-600 flex items-center"
                 title="Refresh Data"
-                disabled={loading}
               >
-                <RotateCcw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+                <RotateCcw className="w-5 h-5" />
               </button>
 
               <div className="flex items-center space-x-1">
@@ -845,7 +851,7 @@ const TotalRequestsComponent = () => {
               checked={showNewRequestsOnly}
               onChange={() => {
                 setShowNewRequestsOnly(!showNewRequestsOnly);
-                setCurrentPage(1);
+                setCurrentPage(1); // Reset to first page
               }}
               className="form-checkbox h-5 w-5 text-blue-600"
             />
@@ -856,7 +862,7 @@ const TotalRequestsComponent = () => {
 
           <div className="overflow-x-auto w-full">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between bg-white shadow-md rounded-lg p-4 space-y-3 md:space-y-0 md:space-x-4 flex-wrap">
-              {/* Filters remain the same */}
+              {/* Order ID Filter - New Addition */}
               <div className="flex flex-col md:flex-row md:items-center space-y-1 md:space-y-0 md:space-x-3 w-full md:w-auto">
                 <label
                   htmlFor="orderIdFilter"
@@ -870,7 +876,7 @@ const TotalRequestsComponent = () => {
                   value={orderIdFilter}
                   onChange={(e) => {
                     setOrderIdFilter(e.target.value);
-                    setCurrentPage(1);
+                    setCurrentPage(1); // Reset to first page on filter change
                   }}
                   placeholder="Enter order ID"
                   className="border p-2 rounded-md w-full md:w-auto"
@@ -891,7 +897,7 @@ const TotalRequestsComponent = () => {
                   value={phoneNumberFilter}
                   onChange={(e) => {
                     setPhoneNumberFilter(e.target.value);
-                    setCurrentPage(1);
+                    setCurrentPage(1); // Reset to first page on filter change
                   }}
                   placeholder="Enter phone number"
                   className="border p-2 rounded-md w-full md:w-auto"
@@ -911,7 +917,7 @@ const TotalRequestsComponent = () => {
                   value={selectedProduct}
                   onChange={(e) => {
                     setSelectedProduct(e.target.value);
-                    setCurrentPage(1);
+                    setCurrentPage(1); // Reset to first page on filter change
                   }}
                   className="border p-2 rounded-md w-full md:w-auto"
                 >
@@ -946,7 +952,7 @@ const TotalRequestsComponent = () => {
                   value={selectedStatusMain}
                   onChange={(e) => {
                     setSelectedStatusMain(e.target.value);
-                    setCurrentPage(1);
+                    setCurrentPage(1); // Reset to first page on filter change
                   }}
                   className="border p-2 rounded-md w-full md:w-auto"
                 >
@@ -971,7 +977,7 @@ const TotalRequestsComponent = () => {
                   value={selectedDate}
                   onChange={(e) => {
                     setSelectedDate(e.target.value);
-                    setCurrentPage(1);
+                    setCurrentPage(1); // Reset to first page on filter change
                   }}
                   className="border p-2 rounded-md w-full md:w-auto"
                 />
@@ -990,7 +996,7 @@ const TotalRequestsComponent = () => {
                   value={startTime}
                   onChange={(e) => {
                     setStartTime(e.target.value);
-                    setCurrentPage(1);
+                    setCurrentPage(1); // Reset to first page on filter change
                   }}
                   className="border p-2 rounded-md w-full md:w-auto"
                 />
@@ -1009,7 +1015,7 @@ const TotalRequestsComponent = () => {
                   value={endTime}
                   onChange={(e) => {
                     setEndTime(e.target.value);
-                    setCurrentPage(1);
+                    setCurrentPage(1); // Reset to first page on filter change
                   }}
                   className="border p-2 rounded-md w-full md:w-auto"
                 />
@@ -1027,7 +1033,7 @@ const TotalRequestsComponent = () => {
                   value={sortOrder}
                   onChange={(e) => {
                     setSortOrder(e.target.value);
-                    setCurrentPage(1);
+                    setCurrentPage(1); // Reset to first page on sort change
                   }}
                   className="border p-2 rounded-md w-full md:w-auto"
                 >
@@ -1038,73 +1044,84 @@ const TotalRequestsComponent = () => {
             </div>
           </div>
 
-          <div className="flex justify-between mt-4">
-            <button
-              onClick={() => setOpen(false)}
-              className="bg-red-500 hover:bg-red-400 text-white px-4 py-2 rounded"
-            >
-              Close
-            </button>
-            <button
-              onClick={handleBatchCompleteProcessing}
-              className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded flex items-center"
-              title="Mark all Processing orders as Completed"
-            >
-              <CheckSquare className="mr-2 w-5 h-5" />
-              Complete All Processing
-            </button>
-            <button
-              onClick={handleDownloadExcel}
-              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded"
-            >
-              Download Excel
-            </button>
-          </div>
+          <>
+              <div className="flex justify-between mt-4">
+              <button
+                onClick={() => setOpen(false)}
+                className="bg-red-500 hover:bg-red-400 text-white px-4 py-2 rounded"
+              >
+                Close
+              </button>
+              <button
+                onClick={handleBatchCompleteProcessing}
+                className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded flex items-center"
+                title="Mark all Processing orders as Completed"
+              >
+                <CheckSquare className="mr-2 w-5 h-5" />
+                Complete All Processing
+              </button>
+              <button
+                onClick={handleDownloadExcel}
+                className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded"
+              >
+                Download Excel
+              </button>
+            </div>
 
-          <div className="mt-4 text-sm text-gray-600">
-            Showing {paginatedItems.length} of {filteredOrders.length} results
-            {loading && <span className="ml-2 text-blue-500">Loading...</span>}
-          </div>
+              <div className="mt-4 text-sm text-gray-600">
+                Showing {paginatedItems.length} of {filteredOrders.length}{" "}
+                results
+              </div>
 
-          <div className="w-full h-[400px] overflow-y-auto mt-4">
-            <table className="w-full border-collapse border border-gray-300 text-sm md:text-base">
-              <thead className="bg-sky-700 text-white sticky top-0">
-                <tr>
-                  <th className="border p-2 whitespace-nowrap">Order ID</th>
-                  <th className="border p-2 whitespace-nowrap">Item ID</th>
-                  <th className="border p-2 whitespace-nowrap">Username</th>
-                  <th className="border p-2 whitespace-nowrap">Phone Number</th>
-                  <th className="border p-2 whitespace-nowrap">Status</th>
-                  <th className="border p-2 whitespace-nowrap">Name</th>
-                  <th className="border p-2 whitespace-nowrap">Description</th>
-                  <th className="border p-2 whitespace-nowrap">Date</th>
-                  <th className="border p-2 whitespace-nowrap">Time</th>
-                  <th className="border p-2 whitespace-nowrap">Price</th>
-                  <th className="border p-2 whitespace-nowrap text-center">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedItems.length > 0 ? (
-                  paginatedItems.map((item, index) => (
-                    <OptimizedTableRow
-                      key={`${item.id}-${item.orderId}`}
-                      item={item}
-                      index={index}
-                      getRowColor={getRowColor}
-                      handleViewClickStatus={handleViewClickStatus}
-                      handleUpdateStatus={handleUpdateStatus}
-                    />
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="11" className="text-center p-4">
-                      {loading ? "Loading..." : "No items found"}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+              <div className="w-full h-[400px] overflow-y-auto mt-4">
+                <table className="w-full border-collapse border border-gray-300 text-sm md:text-base">
+                  <thead className="bg-sky-700 text-white sticky top-0">
+                    <tr>
+                      <th className="border p-2 whitespace-nowrap">Order ID</th>
+                      <th className="border p-2 whitespace-nowrap">Item ID</th>
+                      <th className="border p-2 whitespace-nowrap">Username</th>
+                      {/* <th className="border p-2 whitespace-nowrap">
+                        User Phone
+                      </th> */}
+                      <th className="border p-2 whitespace-nowrap">
+                        Phone Number
+                      </th>
+                      <th className="border p-2 whitespace-nowrap">Status</th>
+                      <th className="border p-2 whitespace-nowrap">Name</th>
+                      <th className="border p-2 whitespace-nowrap">
+                        Description
+                      </th>
+                      <th className="border p-2 whitespace-nowrap">Date</th>
+                      <th className="border p-2 whitespace-nowrap">Time</th>
+                      <th className="border p-2 whitespace-nowrap">Price</th>
+                      <th className="border p-2 whitespace-nowrap text-center">
+                        Action
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedItems.length > 0 ? (
+                      paginatedItems.map((item, index) => (
+                        <TableRow
+                          key={`${item.id}-${item.orderId}`}
+                          item={item}
+                          index={index}
+                          getRowColor={getRowColor}
+                          handleViewClickStatus={handleViewClickStatus}
+                          handleUpdateStatus={handleUpdateStatus}
+                        />
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan="11" className="text-center p-4">
+                          No items found
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+          </>
 
           {/* Pagination controls */}
           {totalPages > 1 && (
@@ -1122,6 +1139,7 @@ const TotalRequestsComponent = () => {
               </button>
 
               {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                // Logic to show pages around current page
                 let pageNum;
                 if (totalPages <= 5) {
                   pageNum = i + 1;
@@ -1218,33 +1236,16 @@ const TotalRequestsComponent = () => {
 
 export default TotalRequestsComponent;
 
-// PERFORMANCE OPTIMIZATION: Heavily optimized table row component
-const OptimizedTableRow = memo(({ item, index, getRowColor, handleViewClickStatus, handleUpdateStatus }) => {
-  // Pre-calculate values to avoid repeated calculations
-  const isCancelled = item.status === "Cancelled";
-  const rowColorClass = getRowColor(item.product?.name);
-  const statusColorClass = item.status === "Completed"
-    ? "bg-green-100 text-green-800"
-    : item.status === "Processing"
-    ? "bg-yellow-100 text-yellow-800"
-    : item.status === "Cancelled"
-    ? "bg-red-100 text-red-800"
-    : "bg-blue-100 text-blue-800";
-
-  const priceColorClass = isCancelled
-    ? "text-red-800 font-bold"
-    : item.product?.price >= 0
-    ? "text-green-600"
-    : "text-red-600";
-
+// Memoized table row component to prevent unnecessary re-renders
+const TableRow = memo(({ item, index, getRowColor, handleViewClickStatus, handleUpdateStatus }) => {
   return (
     <tr
       className={`hover:bg-gray-100 text-black ${
-        isCancelled
+        item.order?.items?.[0]?.status === "Cancelled"
           ? "bg-red-700 text-white"
           : item.isNew
           ? "bg-green-50 animate-pulse border-l-4 border-green-500"
-          : rowColorClass
+          : getRowColor(item.product?.name)
       }`}
     >
       <td className="border px-2 py-2 md:px-4 relative">
@@ -1263,58 +1264,89 @@ const OptimizedTableRow = memo(({ item, index, getRowColor, handleViewClickStatu
           )}
         </div>
       </td>
-      <td className="border px-2 py-2 md:px-4">{item.id || "N/A"}</td>
-      <td className="border px-2 py-2 md:px-4">{item.user?.name || "N/A"}</td>
-      <td className="border px-2 py-2 md:px-4">{item?.mobileNumber || "N/A"}</td>
       <td className="border px-2 py-2 md:px-4">
-        <span className={`px-2 py-1 rounded-full text-xs ${statusColorClass}`}>
-          {item.status || "N/A"}
+        {item.id || "N/A"}
+      </td>
+      <td className="border px-2 py-2 md:px-4">
+        {item.user?.name || "N/A"}
+      </td>
+      <td className="border px-2 py-2 md:px-4">
+        {item?.mobileNumber || "N/A"}
+      </td>
+      <td className="border px-2 py-2 md:px-4">
+        <span
+          className={`px-2 py-1 rounded-full text-xs ${
+            item.order?.items?.[0]?.status === "Completed"
+              ? "bg-green-100 text-green-800"
+              : item.order?.items?.[0]?.status === "Processing"
+              ? "bg-yellow-100 text-yellow-800"
+              : item.order?.items?.[0]?.status === "Cancelled"
+              ? "bg-red-100 text-red-800"
+              : "bg-blue-100 text-blue-800"
+          }`}
+        >
+          {item.order?.items?.[0]?.status || "N/A"}
         </span>
       </td>
       <td className="border px-2 py-2 md:px-4 whitespace-nowrap">
         {item.product?.name || "N/A"}
       </td>
       <td className="border px-2 py-2 md:px-4 font-semibold">
-        {item.productDescription} GB
+        {item.product?.description
+          ? item.product.description.replace(/\D+$/, "")
+          : "N/A"}{" "}
+        GB
       </td>
       <td className="border px-2 py-2 md:px-4 whitespace-nowrap">
-        {item.formattedDate}
+        {item.order?.createdAt
+          ? new Date(item.order.createdAt).toISOString().split("T")[0]
+          : "N/A"}
       </td>
       <td className="border px-2 py-2 md:px-4 whitespace-nowrap">
-        {item.formattedTime}
+        {item.order?.createdAt
+          ? new Date(item.order.createdAt).toLocaleTimeString()
+          : "N/A"}
       </td>
-      <td className={`border px-4 py-2 text-left whitespace-nowrap ${priceColorClass}`}>
+      <td
+        className={`border px-4 py-2 text-left whitespace-nowrap ${
+          item.order?.items?.[0]?.status === "Cancelled"
+            ? "text-red-800 font-bold"
+            : item.product?.price >= 0
+            ? "text-green-600"
+            : "text-red-600"
+        }`}
+      >
         GH₵ {item.product?.price || 0}
       </td>
       <td className="border px-2 py-2 md:px-4 text-center flex items-center justify-center space-x-2">
         <button
           className={`text-blue-500 hover:text-blue-700 mr-2 ${
             item.isNew ? "animate-bounce" : ""
-          } ${isCancelled ? "opacity-50 cursor-not-allowed" : ""}`}
+          } ${
+            item.order?.items?.[0]?.status === "Cancelled"
+              ? "opacity-50 cursor-not-allowed"
+              : ""
+          }`}
           onClick={() => handleViewClickStatus(item.id)}
-          disabled={isCancelled}
+          disabled={item.order?.items?.[0]?.status === "Cancelled"}
         >
           <SpellCheck className="w-5 h-5" />
         </button>
         <button
           className={`text-green-500 hover:text-green-700 ${
             item.isNew ? "animate-bounce" : ""
-          } ${isCancelled ? "opacity-50 cursor-not-allowed" : ""}`}
+          } ${
+            item.order?.items?.[0]?.status === "Cancelled"
+              ? "opacity-50 cursor-not-allowed"
+              : ""
+          }`}
           onClick={() => handleUpdateStatus(item.order?.id)}
           title="Mark as Completed"
-          disabled={isCancelled}
+          disabled={item.order?.items?.[0]?.status === "Cancelled"}
         >
           <Check className="w-5 h-5" />
         </button>
       </td>
     </tr>
-  );
-}, (prevProps, nextProps) => {
-  // Custom comparison function for better memoization
-  return (
-    prevProps.item.id === nextProps.item.id &&
-    prevProps.item.status === nextProps.item.status &&
-    prevProps.item.isNew === nextProps.item.isNew &&
-    prevProps.item.createdAt === nextProps.item.createdAt
   );
 });
