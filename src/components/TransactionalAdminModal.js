@@ -335,6 +335,14 @@ const TransactionalAdminModal = () => {
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("transactions");
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 50,
+    total: 0,
+    totalPages: 0,
+    hasNext: false,
+    hasPrev: false
+  });
 
   // Filters
   const [search, setSearch] = useState("");
@@ -345,7 +353,7 @@ const TransactionalAdminModal = () => {
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(100);
+  const [itemsPerPage] = useState(50);
 
   // Debounced search with faster timeout
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -357,7 +365,7 @@ const TransactionalAdminModal = () => {
     return () => clearTimeout(timer);
   }, [search]);
 
-  // Optimized fetchTransactions with caching
+  // Optimized fetchTransactions with server-side filtering
   const fetchTransactions = useCallback(async () => {
     setLoading(true);
     try {
@@ -377,6 +385,14 @@ const TransactionalAdminModal = () => {
         queryParams.push(`type=${typeFilter}`);
       }
 
+      if (debouncedSearch) {
+        queryParams.push(`search=${encodeURIComponent(debouncedSearch)}`);
+      }
+
+      if (amountFilter !== "all") {
+        queryParams.push(`amountFilter=${amountFilter}`);
+      }
+
       queryParams.push(`page=${currentPage}`);
       queryParams.push(`limit=${itemsPerPage}`);
 
@@ -385,90 +401,138 @@ const TransactionalAdminModal = () => {
       }
 
       const response = await axios.get(url);
-      const data = response.data.data || [];
-      setTransactions(data);
+      const result = response.data;
+      setTransactions(result.data || []);
+      setPagination(result.pagination || {
+        page: 1,
+        limit: itemsPerPage,
+        total: 0,
+        totalPages: 0,
+        hasNext: false,
+        hasPrev: false
+      });
     } catch (err) {
       console.error("Failed to fetch transactions", err);
+      setTransactions([]);
     }
     setLoading(false);
-  }, [startDate, endDate, typeFilter, currentPage, itemsPerPage]);
+  }, [startDate, endDate, typeFilter, currentPage, itemsPerPage, debouncedSearch, amountFilter]);
 
-  // Highly optimized filtered transactions with better memoization
+  // Simplified filtered transactions since filtering is now server-side
   const filteredTransactions = useMemo(() => {
-    if (!transactions.length) return [];
+    // Server-side filtering means we can use transactions directly
+    return transactions;
+  }, [transactions]);
+
+  // Fetch user sales data separately for better performance
+  const [userSalesData, setUserSalesData] = useState([]);
+  const [adminBalanceData, setAdminBalanceData] = useState({});
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  
+  // Total database statistics (separate from paginated data)
+  const [totalStats, setTotalStats] = useState({
+    totalTransactions: 0,
+    totalCredits: 0,
+    totalDebits: 0,
+    netBalance: 0
+  });
+  const [statsLoading, setStatsLoading] = useState(false);
+
+  const fetchSummaryData = useCallback(async () => {
+    if (activeTab === "transactions") return;
     
-    let filtered = transactions;
+    setSummaryLoading(true);
+    try {
+      // Fetch a larger dataset for summary calculations when needed
+      let url = BASE_URL + "/api/transactions";
+      const queryParams = [];
 
-    if (debouncedSearch) {
-      const searchLower = debouncedSearch.toLowerCase();
-      filtered = filtered.filter((tx) =>
-        tx.user?.name?.toLowerCase().includes(searchLower)
-      );
-    }
-
-    if (amountFilter !== "all") {
-      filtered = amountFilter === "positive" 
-        ? filtered.filter((tx) => tx.amount >= 0)
-        : filtered.filter((tx) => tx.amount < 0);
-    }
-
-    // Default sort by date desc (most recent first) - no additional sorting needed
-    return filtered;
-  }, [transactions, debouncedSearch, amountFilter]);
-
-  // Optimized user sales data calculation
-  const userSalesData = useMemo(() => {
-    if (!filteredTransactions.length) return [];
-    
-    const salesByUser = new Map();
-    const latestBalanceByUser = new Map();
-
-    // Single pass through transactions for better performance
-    filteredTransactions.forEach((tx) => {
-      const userName = tx.user?.name;
-      if (!userName) return;
-
-      // Track latest balance
-      const existing = latestBalanceByUser.get(userName);
-      if (!existing || new Date(tx.createdAt) > new Date(existing.createdAt)) {
-        latestBalanceByUser.set(userName, { balance: tx.balance || 0, createdAt: tx.createdAt });
+      if (startDate && endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        queryParams.push(`startDate=${start.toISOString()}`);
+        queryParams.push(`endDate=${end.toISOString()}`);
       }
 
-      // Track sales
-      if (tx.type === "ORDER") {
-        const userSales = salesByUser.get(userName) || {
-          userName,
-          totalSales: 0,
-          orderCount: 0,
-          loanBalance: 0,
-        };
-        userSales.totalSales += tx.amount;
-        userSales.orderCount += 1;
-        salesByUser.set(userName, userSales);
+      if (typeFilter) {
+        queryParams.push(`type=${typeFilter}`);
       }
-    });
 
-    // Attach current balance
-    for (const [userName, userSales] of salesByUser) {
-      const balanceInfo = latestBalanceByUser.get(userName);
-      userSales.loanBalance = balanceInfo?.balance || 0;
+      if (debouncedSearch) {
+        queryParams.push(`search=${encodeURIComponent(debouncedSearch)}`);
+      }
+
+      // For summaries, fetch more data but limit to reasonable amount
+      queryParams.push(`page=1`);
+      queryParams.push(`limit=1000`);
+
+      if (queryParams.length > 0) {
+        url += "?" + queryParams.join("&");
+      }
+
+      const response = await axios.get(url);
+      const summaryTransactions = response.data.data || [];
+      
+      // Calculate user sales data
+      const salesByUser = new Map();
+      const latestBalanceByUser = new Map();
+
+      summaryTransactions.forEach((tx) => {
+        const userName = tx.user?.name;
+        if (!userName) return;
+
+        // Track latest balance
+        const existing = latestBalanceByUser.get(userName);
+        if (!existing || new Date(tx.createdAt) > new Date(existing.createdAt)) {
+          latestBalanceByUser.set(userName, { balance: tx.balance || 0, createdAt: tx.createdAt });
+        }
+
+        // Track sales
+        if (tx.type === "ORDER") {
+          const userSales = salesByUser.get(userName) || {
+            userName,
+            totalSales: 0,
+            orderCount: 0,
+            loanBalance: 0,
+          };
+          userSales.totalSales += tx.amount;
+          userSales.orderCount += 1;
+          salesByUser.set(userName, userSales);
+        }
+      });
+
+      // Attach current balance
+      for (const [userName, userSales] of salesByUser) {
+        const balanceInfo = latestBalanceByUser.get(userName);
+        userSales.loanBalance = balanceInfo?.balance || 0;
+      }
+
+      setUserSalesData(Array.from(salesByUser.values()).sort(
+        (a, b) => Math.abs(b.totalSales) - Math.abs(a.totalSales)
+      ));
+
+      // Calculate admin balance data
+      calculateAdminBalanceData(summaryTransactions);
+    } catch (err) {
+      console.error("Failed to fetch summary data", err);
     }
+    setSummaryLoading(false);
+  }, [activeTab, startDate, endDate, typeFilter, debouncedSearch]);
 
-    return Array.from(salesByUser.values()).sort(
-      (a, b) => Math.abs(b.totalSales) - Math.abs(a.totalSales)
-    );
-  }, [filteredTransactions]);
-
-  // Optimized admin balance data calculation
-  const adminBalanceData = useMemo(() => {
-    if (!filteredTransactions.length) return {
-      totalRevenue: 0, totalTopups: 0, totalExpenses: 0,
-      totalCredits: 0, totalDebits: 0, orderCount: 0,
-      topupCount: 0, rejectedTopupCount: 0, loanCount: 0,
-      activeUsers: 0, netPosition: 0, netCashFlow: 0,
-      totalRefunds: 0, refundCount: 0, previousBalance: 0,
-      totalTopupsAndRefunds: 0
-    };
+  const calculateAdminBalanceData = (summaryTransactions) => {
+    if (!summaryTransactions.length) {
+      setAdminBalanceData({
+        totalRevenue: 0, totalTopups: 0, totalExpenses: 0,
+        totalCredits: 0, totalDebits: 0, orderCount: 0,
+        topupCount: 0, rejectedTopupCount: 0, loanCount: 0,
+        activeUsers: 0, netPosition: 0, netCashFlow: 0,
+        totalRefunds: 0, refundCount: 0, previousBalance: 0,
+        totalTopupsAndRefunds: 0
+      });
+      return;
+    }
 
     const data = {
       totalRevenue: 0, totalTopups: 0, totalExpenses: 0,
@@ -479,8 +543,7 @@ const TransactionalAdminModal = () => {
       totalTopupsAndRefunds: 0
     };
 
-    // Single pass calculation
-    filteredTransactions.forEach((tx) => {
+    summaryTransactions.forEach((tx) => {
       if (tx.user?.name) {
         data.activeUsers.add(tx.user.name);
       }
@@ -523,84 +586,82 @@ const TransactionalAdminModal = () => {
     data.netCashFlow = data.totalCredits + data.totalDebits;
     data.totalTopupsAndRefunds = data.totalTopups + data.totalRefunds;
 
-    // Calculate previousBalance (simplified for performance)
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
-    const transactionsBefore12am = transactions.filter(tx => 
-      new Date(tx.createdAt) < today
-    );
+    setAdminBalanceData(data);
+  };
 
-    if (debouncedSearch) {
-      const userName = debouncedSearch.toLowerCase();
-      const userTxs = transactionsBefore12am.filter(tx => 
-        tx.user?.name?.toLowerCase().includes(userName)
-      );
-      const latestUserTx = userTxs.sort((a, b) => 
-        new Date(b.createdAt) - new Date(a.createdAt)
-      )[0];
-      data.previousBalance = latestUserTx ? latestUserTx.balance : 0;
-    } else {
-      const latestByUser = new Map();
-      transactionsBefore12am.forEach(tx => {
-        const uname = tx.user?.name;
-        if (!uname) return;
-        const existing = latestByUser.get(uname);
-        if (!existing || new Date(tx.createdAt) > new Date(existing.createdAt)) {
-          latestByUser.set(uname, tx);
-        }
-      });
-      data.previousBalance = Array.from(latestByUser.values())
-        .reduce((sum, tx) => sum + (tx.balance || 0), 0);
-    }
+  // Fetch total statistics from database
+  const fetchTotalStats = useCallback(async () => {
+    setStatsLoading(true);
+    try {
+      let url = BASE_URL + "/api/transactions/stats";
+      const queryParams = [];
 
-    return data;
-  }, [filteredTransactions, transactions, debouncedSearch]);
-
-  // Optimized statistics calculation
-  const stats = useMemo(() => {
-    if (!filteredTransactions.length) return {
-      totalTransactions: 0, totalCredits: 0, 
-      totalDebits: 0, netBalance: 0
-    };
-
-    let totalCredits = 0;
-    let totalDebits = 0;
-
-    filteredTransactions.forEach((tx) => {
-      if (tx.amount > 0) {
-        totalCredits += tx.amount;
-      } else {
-        totalDebits += tx.amount;
+      if (startDate && endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        queryParams.push(`startDate=${start.toISOString()}`);
+        queryParams.push(`endDate=${end.toISOString()}`);
       }
-    });
 
-    return {
-      totalTransactions: filteredTransactions.length,
-      totalCredits,
-      totalDebits,
-      netBalance: totalCredits + totalDebits,
-    };
-  }, [filteredTransactions]);
+      if (typeFilter) {
+        queryParams.push(`type=${typeFilter}`);
+      }
+
+      if (debouncedSearch) {
+        queryParams.push(`search=${encodeURIComponent(debouncedSearch)}`);
+      }
+
+      if (amountFilter !== "all") {
+        queryParams.push(`amountFilter=${amountFilter}`);
+      }
+
+      if (queryParams.length > 0) {
+        url += "?" + queryParams.join("&");
+      }
+
+      const response = await axios.get(url);
+      const result = response.data;
+      setTotalStats(result.data || {
+        totalTransactions: 0,
+        totalCredits: 0,
+        totalDebits: 0,
+        netBalance: 0
+      });
+    } catch (err) {
+      console.error("Failed to fetch total statistics", err);
+      setTotalStats({
+        totalTransactions: 0,
+        totalCredits: 0,
+        totalDebits: 0,
+        netBalance: 0
+      });
+    }
+    setStatsLoading(false);
+  }, [startDate, endDate, typeFilter, debouncedSearch, amountFilter]);
+
+  // Trigger summary data fetch when switching tabs
+  useEffect(() => {
+    if (activeTab !== "transactions" && isOpen) {
+      fetchSummaryData();
+    }
+  }, [activeTab, isOpen, fetchSummaryData]);
+
+  // Fetch total stats when filters change or modal opens
+  useEffect(() => {
+    if (isOpen) {
+      fetchTotalStats();
+    }
+  }, [isOpen, fetchTotalStats]);
+
+  // Use total stats from database instead of paginated data
+  const stats = totalStats;
 
   // Optimized virtualization
   const { visibleItems, totalHeight, offsetY, onScroll, startIndex } = useVirtualization(
     filteredTransactions, 400, 50
   );
-
-  const openModal = useCallback(() => {
-    const today = new Date().toISOString().split("T")[0];
-    setEndDate(today);
-
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    setStartDate(thirtyDaysAgo.toISOString().split("T")[0]);
-
-    setCurrentPage(1);
-    setIsOpen(true);
-  }, []);
-
-  const closeModal = useCallback(() => setIsOpen(false), []);
 
   const resetFilters = useCallback(() => {
     const today = new Date().toISOString().split("T")[0];
@@ -614,6 +675,23 @@ const TransactionalAdminModal = () => {
     setAmountFilter("all");
     setCurrentPage(1);
   }, []);
+
+  const openModal = useCallback(() => {
+    const today = new Date().toISOString().split("T")[0];
+    setEndDate(today);
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    setStartDate(thirtyDaysAgo.toISOString().split("T")[0]);
+
+    setCurrentPage(1);
+    setIsOpen(true);
+  }, []);
+
+  const closeModal = useCallback(() => {
+    setIsOpen(false);
+    resetFilters();
+  }, [resetFilters]);
 
   const exportToCSV = useCallback(async () => {
     setExportLoading(true);
@@ -871,23 +949,23 @@ const TransactionalAdminModal = () => {
                           </div>
 
                           {/* Pagination */}
-                          {filteredTransactions.length > 0 && (
+                          {pagination.total > 0 && (
                             <div className="flex justify-between items-center mt-4">
                               <div className="text-sm text-gray-600">
-                                Showing {Math.min(itemsPerPage, filteredTransactions.length)} of {stats.totalTransactions} transactions
+                                Showing {Math.min(pagination.limit, filteredTransactions.length)} of {pagination.total} transactions
                               </div>
                               <div className="flex gap-2">
                                 <button
                                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                                  disabled={currentPage === 1}
+                                  disabled={!pagination.hasPrev}
                                   className="px-3 py-1 border rounded disabled:opacity-50"
                                 >
                                   Previous
                                 </button>
-                                <span className="px-3 py-1">Page {currentPage}</span>
+                                <span className="px-3 py-1">Page {pagination.page} of {pagination.totalPages}</span>
                                 <button
                                   onClick={() => setCurrentPage((p) => p + 1)}
-                                  disabled={filteredTransactions.length < itemsPerPage}
+                                  disabled={!pagination.hasNext}
                                   className="px-3 py-1 border rounded disabled:opacity-50"
                                 >
                                   Next
@@ -899,22 +977,42 @@ const TransactionalAdminModal = () => {
                       )}
 
                       {activeTab === "sales" && (
-                        <UserSalesSummary userSales={userSalesData} />
+                        summaryLoading ? (
+                          <div className="text-center py-12 text-gray-500">
+                            Loading sales summary...
+                          </div>
+                        ) : (
+                          <UserSalesSummary userSales={userSalesData} />
+                        )
                       )}
 
                       {activeTab === "balance" && (
-                        <AdminBalanceSheet balanceData={adminBalanceData} />
+                        summaryLoading ? (
+                          <div className="text-center py-12 text-gray-500">
+                            Loading balance sheet...
+                          </div>
+                        ) : (
+                          <AdminBalanceSheet balanceData={adminBalanceData} />
+                        )
                       )}
                     </div>
                   </div>
 
                   <div className="mt-auto pt-4 border-t sticky bottom-0 bg-white p-4 z-20">
-                    <button
-                      onClick={closeModal}
-                      className="px-5 py-2 bg-red-600 text-white rounded hover:bg-red-700 w-full"
-                    >
-                      Close
-                    </button>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={resetFilters}
+                        className="px-5 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 flex-1"
+                      >
+                        Reset Filters
+                      </button>
+                      <button
+                        onClick={closeModal}
+                        className="px-5 py-2 bg-red-600 text-white rounded hover:bg-red-700 flex-1"
+                      >
+                        Close
+                      </button>
+                    </div>
                   </div>
                 </Dialog.Panel>
               </Transition.Child>
