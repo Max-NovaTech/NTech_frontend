@@ -623,7 +623,14 @@ const TransactionalAdminModal = () => {
 
   // Optimized statistics calculation
   const stats = useMemo(() => {
-    if (!filteredTransactions.length) return {
+    // Check if any filters are applied
+    const hasFilters = debouncedSearch || typeFilter || amountFilter !== "all" || 
+                      (startDate && endDate);
+    
+    // Use filtered transactions only if filters are applied, otherwise use all transactions
+    const transactionsToUse = hasFilters ? filteredTransactions : transactions;
+    
+    if (!transactionsToUse.length) return {
       totalTransactions: 0, totalCredits: 0, 
       totalDebits: 0, netBalance: 0
     };
@@ -631,7 +638,7 @@ const TransactionalAdminModal = () => {
     let totalCredits = 0;
     let totalDebits = 0;
 
-    filteredTransactions.forEach((tx) => {
+    transactionsToUse.forEach((tx) => {
       if (tx.amount > 0) {
         totalCredits += tx.amount;
       } else {
@@ -640,12 +647,12 @@ const TransactionalAdminModal = () => {
     });
 
     return {
-      totalTransactions: filteredTransactions.length,
+      totalTransactions: transactionsToUse.length,
       totalCredits,
       totalDebits,
       netBalance: totalCredits + totalDebits,
     };
-  }, [filteredTransactions]);
+  }, [filteredTransactions, transactions, debouncedSearch, typeFilter, amountFilter, startDate, endDate]);
 
   // Optimized virtualization
   const { visibleItems, totalHeight, offsetY, onScroll, startIndex } = useVirtualization(
