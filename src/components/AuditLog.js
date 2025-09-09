@@ -25,9 +25,11 @@ const AuditLog = ({ isOpen, onClose }) => {
       if (type) params.type = type;
       // Fetch real data from backend
       const res = await axios.get(BASE_URL + "/api/admin-balance-sheet/audit-log", { params });
-      setLogs(res.data);
+      // Ensure we always have an array
+      setLogs(Array.isArray(res.data) ? res.data : []);
     } catch (e) {
       setError(e.message || "Failed to fetch audit logs");
+      setLogs([]); // Reset to empty array on error
     } finally {
       setLoading(false);
     }

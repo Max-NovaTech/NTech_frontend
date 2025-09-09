@@ -305,21 +305,33 @@ const AdminBalanceSheet = memo(({ balanceData }) => (
 ));
 
 // Memoized Stats Cards Component
-const StatsCards = memo(({ stats }) => (
+const StatsCards = memo(({ stats, onStatsClick }) => (
   <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-    <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+    <div 
+      className="bg-blue-50 p-3 rounded-lg border border-blue-200 cursor-pointer hover:bg-blue-100 transition-colors"
+      onClick={() => onStatsClick('totalTransactions', 'Total Transactions')}
+    >
       <div className="text-sm text-blue-800">Total Transactions</div>
       <div className="font-bold text-lg">{stats.totalTransactions}</div>
     </div>
-    <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+    <div 
+      className="bg-green-50 p-3 rounded-lg border border-green-200 cursor-pointer hover:bg-green-100 transition-colors"
+      onClick={() => onStatsClick('totalCredits', 'Total Credits')}
+    >
       <div className="text-sm text-green-800">Total Credits</div>
       <div className="font-bold text-lg">{formatAmount(stats.totalCredits)}</div>
     </div>
-    <div className="bg-red-50 p-3 rounded-lg border border-red-200">
+    <div 
+      className="bg-red-50 p-3 rounded-lg border border-red-200 cursor-pointer hover:bg-red-100 transition-colors"
+      onClick={() => onStatsClick('totalDebits', 'Total Debits')}
+    >
       <div className="text-sm text-red-800">Total Debits</div>
       <div className="font-bold text-lg">{formatAmount(Math.abs(stats.totalDebits))}</div>
     </div>
-    <div className="bg-purple-50 p-3 rounded-lg border border-purple-200">
+    <div 
+      className="bg-purple-50 p-3 rounded-lg border border-purple-200 cursor-pointer hover:bg-purple-100 transition-colors"
+      onClick={() => onStatsClick('netBalance', 'Net Balance Change')}
+    >
       <div className="text-sm text-purple-800">Net Balance Change</div>
       <div className="font-bold text-lg">{formatAmount(stats.netBalance)}</div>
     </div>
@@ -350,8 +362,20 @@ const TransactionalAdminModal = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(100);
 
+  // Stats popup state
+  const [statsPopup, setStatsPopup] = useState({
+    isOpen: false,
+    type: null,
+    title: "",
+    data: []
+  });
+
   // Debounced search with faster timeout
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  
+  // Search results state
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchPagination, setSearchPagination] = useState(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -360,41 +384,63 @@ const TransactionalAdminModal = () => {
     return () => clearTimeout(timer);
   }, [search]);
 
+
   // Optimized fetchTransactions with caching
   const fetchTransactions = useCallback(async () => {
-    setLoading(true);
     try {
-      let url = BASE_URL + "/api/transactions";
-      const queryParams = [];
-
-      if (startDate && endDate) {
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        start.setHours(0, 0, 0, 0);
-        end.setHours(23, 59, 59, 999);
-        queryParams.push(`startDate=${start.toISOString()}`);
-        queryParams.push(`endDate=${end.toISOString()}`);
+      setLoading(true);
+      const response = await axios.get(`${BASE_URL}/api/transactions`);
+      if (response.data.success) {
+        setTransactions(response.data.data);
       }
-
-      if (typeFilter) {
-        queryParams.push(`type=${typeFilter}`);
-      }
-
-      queryParams.push(`page=${currentPage}`);
-      queryParams.push(`limit=${itemsPerPage}`);
-
-      if (queryParams.length > 0) {
-        url += "?" + queryParams.join("&");
-      }
-
-      const response = await axios.get(url);
-      const data = response.data.data || [];
-      setTransactions(data);
-    } catch (err) {
-      console.error("Failed to fetch transactions", err);
+    } catch (error) {
+      console.error("Error fetching transactions:", error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  }, [startDate, endDate, typeFilter, currentPage, itemsPerPage]);
+  }, []);
+
+  // Search transactions across entire database
+  const searchTransactions = useCallback(async (searchQuery, filters = {}) => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams();
+      
+      if (searchQuery) params.append('search', searchQuery);
+      if (filters.typeFilter) params.append('typeFilter', filters.typeFilter);
+      if (filters.amountFilter) params.append('amountFilter', filters.amountFilter);
+      if (filters.startDate) params.append('startDate', filters.startDate);
+      if (filters.endDate) params.append('endDate', filters.endDate);
+      params.append('limit', '1000'); // Get more results for search
+      
+      const response = await axios.get(`${BASE_URL}/api/transactions/search?${params}`);
+      if (response.data.success) {
+        setTransactions(response.data.data);
+        setSearchResults(response.data.data);
+        setSearchPagination(response.data.pagination);
+      }
+    } catch (error) {
+      console.error("Error searching transactions:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Effect to trigger search when debouncedSearch changes
+  useEffect(() => {
+    if (debouncedSearch.trim()) {
+      // Use search endpoint for database-wide search
+      searchTransactions(debouncedSearch, {
+        typeFilter,
+        amountFilter: amountFilter !== 'all' ? amountFilter : null,
+        startDate,
+        endDate
+      });
+    } else {
+      // Use regular fetch for no search
+      fetchTransactions();
+    }
+  }, [debouncedSearch, typeFilter, amountFilter, startDate, endDate, searchTransactions, fetchTransactions]);
 
   // Fetch admin balance sheet data from new endpoint
   const fetchAdminBalanceData = useCallback(async () => {
@@ -402,6 +448,16 @@ const TransactionalAdminModal = () => {
       let url = BASE_URL + "/api/admin-balance-sheet";
       const queryParams = [];
 
+      // Check if any filters are applied
+      const hasFilters = debouncedSearch || typeFilter || amountFilter !== "all" || 
+                        (startDate && endDate);
+
+      // If filters are applied, use transaction-based calculation instead of API
+      if (hasFilters) {
+        return null; // This will trigger fallback to transaction-based calculation
+      }
+
+      // Only use API for unfiltered data
       if (startDate && endDate) {
         const start = new Date(startDate);
         const end = new Date(endDate);
@@ -421,7 +477,7 @@ const TransactionalAdminModal = () => {
       console.error("Failed to fetch admin balance data", err);
       return {};
     }
-  }, [startDate, endDate]);
+  }, [startDate, endDate, debouncedSearch, typeFilter, amountFilter]);
 
   // Highly optimized filtered transactions with better memoization
   const filteredTransactions = useMemo(() => {
@@ -448,13 +504,20 @@ const TransactionalAdminModal = () => {
 
   // Optimized user sales data calculation
   const userSalesData = useMemo(() => {
-    if (!filteredTransactions.length) return [];
+    // Check if any filters are applied
+    const hasFilters = debouncedSearch || typeFilter || amountFilter !== "all" || 
+                      (startDate && endDate);
+    
+    // Use filtered transactions only if filters are applied, otherwise use all transactions
+    const transactionsToUse = hasFilters ? filteredTransactions : transactions;
+    
+    if (!transactionsToUse.length) return [];
     
     const salesByUser = new Map();
     const latestBalanceByUser = new Map();
 
     // Single pass through transactions for better performance
-    filteredTransactions.forEach((tx) => {
+    transactionsToUse.forEach((tx) => {
       const userName = tx.user?.name;
       if (!userName) return;
 
@@ -487,22 +550,29 @@ const TransactionalAdminModal = () => {
     return Array.from(salesByUser.values()).sort(
       (a, b) => Math.abs(b.totalSales) - Math.abs(a.totalSales)
     );
-  }, [filteredTransactions]);
+  }, [filteredTransactions, transactions, debouncedSearch, typeFilter, amountFilter, startDate, endDate]);
 
   // State for admin balance data from API
   const [adminBalanceApiData, setAdminBalanceApiData] = useState(null);
 
-  // Fetch admin balance data when modal opens or dates change
+  // Fetch admin balance data when modal opens or filters change
   useEffect(() => {
     if (isOpen && activeTab === 'balance') {
       fetchAdminBalanceData().then(setAdminBalanceApiData);
     }
-  }, [isOpen, activeTab, fetchAdminBalanceData]);
+  }, [isOpen, activeTab, fetchAdminBalanceData, debouncedSearch, typeFilter, amountFilter, startDate, endDate]);
 
   // Optimized admin balance data calculation using API data
   const adminBalanceData = useMemo(() => {
-    // Use API data if available, otherwise fall back to transaction-based calculation
-    if (adminBalanceApiData) {
+    // Check if any filters are applied
+    const hasFilters = debouncedSearch || typeFilter || amountFilter !== "all" || 
+                      (startDate && endDate);
+    
+    // Use filtered transactions only if filters are applied, otherwise use all transactions
+    const transactionsToUse = hasFilters ? filteredTransactions : transactions;
+    
+    // Use API data if available and no filters are applied
+    if (adminBalanceApiData && !hasFilters) {
       return {
         totalRevenue: adminBalanceApiData.totalRevenue || 0,
         totalTopups: adminBalanceApiData.totalTopups || 0,
@@ -524,8 +594,8 @@ const TransactionalAdminModal = () => {
       };
     }
 
-    // Fallback to transaction-based calculation if API data not available
-    if (!filteredTransactions.length) return {
+    // Fallback to transaction-based calculation for filtered data or when API data not available
+    if (!transactionsToUse.length) return {
       totalRevenue: 0, totalTopups: 0, totalExpenses: 0,
       totalCredits: 0, totalDebits: 0, orderCount: 0,
       topupCount: 0, rejectedTopupCount: 0, loanCount: 0,
@@ -544,7 +614,7 @@ const TransactionalAdminModal = () => {
     };
 
     // Single pass calculation
-    filteredTransactions.forEach((tx) => {
+    transactionsToUse.forEach((tx) => {
       if (tx.user?.name) {
         data.activeUsers.add(tx.user.name);
       }
@@ -619,7 +689,7 @@ const TransactionalAdminModal = () => {
     }
 
     return data;
-  }, [adminBalanceApiData, filteredTransactions, transactions, debouncedSearch]);
+  }, [adminBalanceApiData, filteredTransactions, transactions, debouncedSearch, typeFilter, amountFilter, startDate, endDate]);
 
   // Optimized statistics calculation
   const stats = useMemo(() => {
@@ -653,6 +723,82 @@ const TransactionalAdminModal = () => {
       netBalance: totalCredits + totalDebits,
     };
   }, [filteredTransactions, transactions, debouncedSearch, typeFilter, amountFilter, startDate, endDate]);
+
+  // Handle stats card clicks
+  const handleStatsClick = useCallback((type, title) => {
+    // Check if any filters are applied
+    const hasFilters = debouncedSearch || typeFilter || amountFilter !== "all" || 
+                      (startDate && endDate);
+    
+    // Use filtered transactions only if filters are applied, otherwise use all transactions
+    const transactionsToUse = hasFilters ? filteredTransactions : transactions;
+    
+    let data = [];
+    
+    switch (type) {
+      case 'totalTransactions':
+        data = transactionsToUse.map(tx => ({
+          type: tx.type,
+          description: tx.description,
+          amount: tx.amount,
+          user: tx.user?.name || 'Unknown',
+          date: formatDate(tx.createdAt)
+        }));
+        break;
+        
+      case 'totalCredits':
+        data = transactionsToUse
+          .filter(tx => tx.amount > 0)
+          .map(tx => ({
+            type: tx.type,
+            description: tx.description,
+            amount: tx.amount,
+            user: tx.user?.name || 'Unknown',
+            date: formatDate(tx.createdAt)
+          }));
+        break;
+        
+      case 'totalDebits':
+        data = transactionsToUse
+          .filter(tx => tx.amount < 0)
+          .map(tx => ({
+            type: tx.type,
+            description: tx.description,
+            amount: tx.amount,
+            user: tx.user?.name || 'Unknown',
+            date: formatDate(tx.createdAt)
+          }));
+        break;
+        
+      case 'netBalance':
+        data = transactionsToUse.map(tx => ({
+          type: tx.type,
+          description: tx.description,
+          amount: tx.amount,
+          user: tx.user?.name || 'Unknown',
+          date: formatDate(tx.createdAt),
+          impact: tx.amount > 0 ? 'Positive' : 'Negative'
+        }));
+        break;
+    }
+    
+    setStatsPopup({
+      isOpen: true,
+      type,
+      title,
+      data
+    });
+  }, [filteredTransactions, transactions, debouncedSearch, typeFilter, amountFilter, startDate, endDate]);
+
+  // Close stats popup
+  const closeStatsPopup = useCallback(() => {
+    setStatsPopup({
+      isOpen: false,
+      type: null,
+      title: "",
+      data: []
+    });
+  }, []);
 
   // Optimized virtualization
   const { visibleItems, totalHeight, offsetY, onScroll, startIndex } = useVirtualization(
@@ -881,7 +1027,7 @@ const TransactionalAdminModal = () => {
                           </div>
 
                           {/* Stats Cards */}
-                          <StatsCards stats={stats} />
+                          <StatsCards stats={stats} onStatsClick={handleStatsClick} />
 
                           {/* Optimized Virtualized Table */}
                           <div className="border rounded-lg overflow-hidden">
@@ -983,6 +1129,138 @@ const TransactionalAdminModal = () => {
                     <button
                       onClick={closeModal}
                       className="px-5 py-2 bg-red-600 text-white rounded hover:bg-red-700 w-full"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </Dialog.Panel>
+              </Transition.Child>
+            </div>
+          </div>
+        </Dialog>
+      </Transition>
+
+      {/* Stats Popup Modal */}
+      <Transition appear show={statsPopup.isOpen} as={Fragment}>
+        <Dialog as="div" className="relative z-50" onClose={closeStatsPopup}>
+          <Transition.Child
+            as={Fragment}
+            enter="ease-out duration-300"
+            enterFrom="opacity-0"
+            enterTo="opacity-100"
+            leave="ease-in duration-200"
+            leaveFrom="opacity-100"
+            leaveTo="opacity-0"
+          >
+            <div className="fixed inset-0 bg-black bg-opacity-30" />
+          </Transition.Child>
+
+          <div className="fixed inset-0 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4">
+              <Transition.Child
+                as={Fragment}
+                enter="ease-out duration-300"
+                enterFrom="opacity-0 scale-95"
+                enterTo="opacity-100 scale-100"
+                leave="ease-in duration-200"
+                leaveFrom="opacity-100 scale-100"
+                leaveTo="opacity-0 scale-95"
+              >
+                <Dialog.Panel className="bg-white rounded-lg w-11/12 max-w-4xl max-h-[80vh] overflow-y-auto p-6">
+                  <Dialog.Title as="div" className="text-xl font-bold text-gray-900 mb-4 flex justify-between items-center">
+                    <span>{statsPopup.title} - Detailed Breakdown</span>
+                    <button
+                      onClick={closeStatsPopup}
+                      className="text-gray-400 hover:text-gray-600 text-2xl"
+                    >
+                      ×
+                    </button>
+                  </Dialog.Title>
+
+                  <div className="mb-4">
+                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                        <div>
+                          <div className="text-sm text-blue-800">Total Records</div>
+                          <div className="font-bold text-lg">{statsPopup.data.length}</div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-blue-800">Total Amount</div>
+                          <div className="font-bold text-lg">
+                            {formatAmount(statsPopup.data.reduce((sum, item) => sum + item.amount, 0))}
+                          </div>
+                        </div>
+                        {statsPopup.type === 'netBalance' && (
+                          <div>
+                            <div className="text-sm text-blue-800">Net Impact</div>
+                            <div className={`font-bold text-lg ${
+                              statsPopup.data.reduce((sum, item) => sum + item.amount, 0) >= 0 
+                                ? 'text-green-600' 
+                                : 'text-red-600'
+                            }`}>
+                              {statsPopup.data.reduce((sum, item) => sum + item.amount, 0) >= 0 ? 'Positive' : 'Negative'}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-2 text-left border">Type</th>
+                          <th className="px-4 py-2 text-left border">Description</th>
+                          <th className="px-4 py-2 text-right border">Amount</th>
+                          <th className="px-4 py-2 text-left border">User</th>
+                          <th className="px-4 py-2 text-left border">Date</th>
+                          {statsPopup.type === 'netBalance' && (
+                            <th className="px-4 py-2 text-center border">Impact</th>
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {statsPopup.data.map((item, index) => (
+                          <tr key={index} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                            <td className="px-4 py-2 border">
+                              <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                item.type === 'TOPUP_APPROVED' ? 'bg-green-100 text-green-800' :
+                                item.type === 'ORDER' ? 'bg-blue-100 text-blue-800' :
+                                item.type === 'REFUND' ? 'bg-teal-100 text-teal-800' :
+                                item.type === 'LOAN_DEDUCTION' ? 'bg-red-100 text-red-800' :
+                                'bg-gray-100 text-gray-800'
+                              }`}>
+                                {item.type}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2 border text-sm">{item.description}</td>
+                            <td className={`px-4 py-2 border text-right font-medium ${
+                              item.amount >= 0 ? 'text-green-600' : 'text-red-600'
+                            }`}>
+                              {formatAmount(item.amount)}
+                            </td>
+                            <td className="px-4 py-2 border">{item.user}</td>
+                            <td className="px-4 py-2 border text-sm">{item.date}</td>
+                            {statsPopup.type === 'netBalance' && (
+                              <td className="px-4 py-2 border text-center">
+                                <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                  item.impact === 'Positive' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                }`}>
+                                  {item.impact}
+                                </span>
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="mt-6 flex justify-end">
+                    <button
+                      onClick={closeStatsPopup}
+                      className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
                     >
                       Close
                     </button>

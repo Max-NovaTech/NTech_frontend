@@ -44,7 +44,7 @@ const TotalRequestsComponent = () => {
   const [showNewRequestsOnly, setShowNewRequestsOnly] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [refreshInterval, setRefreshInterval] = useState(120); // seconds - increased default to reduce server load
+  const [refreshInterval, setRefreshInterval] = useState(30); // seconds - fixed to 30 seconds
   const audioRef = useRef(null);
   const [ticker, setTicker] = useState(0);
 
@@ -133,45 +133,48 @@ const TotalRequestsComponent = () => {
         
         // Check for new items since last fetch (only on first page)
         if (currentPage === 1) {
-          const currentOrderIds = new Set(itemsList.map(item => item.orderId));
-          const prevOrderIds = prevOrderIdsRef.current;
+          // Check for orders with isNew tag from backend
+          const newTaggedOrders = itemsList.filter(item => item.isNew === true);
+          const newTaggedOrdersCount = newTaggedOrders.length;
 
-          // On first load, just set the initial order IDs
-          if (prevOrderIds.size === 0) {
-            prevOrderIdsRef.current = currentOrderIds;
-          } else {
-            const newOrderIds = [...currentOrderIds].filter(id => !prevOrderIds.has(id));
-            const newOrdersCount = newOrderIds.length;
+          // Filter for orders that should trigger notifications (new tag + Pending status)
+          const newPendingOrders = newTaggedOrders.filter(item => 
+            item.order?.items?.[0]?.status === "Processing"
+          );
+          const newPendingOrdersCount = newPendingOrders.length;
 
-            if (newOrdersCount > 0) {
-              setHasNewRequests(true);
-              setNewRequestsCount(newOrdersCount);
-              
-              // Clear any existing timer
-              if (newRequestsTimerRef.current) {
-                clearTimeout(newRequestsTimerRef.current);
+          // Only trigger notifications if we have new tagged orders and this isn't the first load and modal is closed
+          if (newTaggedOrdersCount > 0 && prevOrderIdsRef.current.size > 0) {
+            setHasNewRequests(true);
+            setNewRequestsCount(newTaggedOrdersCount);
+            
+            // Clear any existing timer
+            if (newRequestsTimerRef.current) {
+              clearTimeout(newRequestsTimerRef.current);
+            }
+            
+            // Set timer to hide "New" tag after 30 seconds (30000ms)
+            newRequestsTimerRef.current = setTimeout(() => {
+              setHasNewRequests(false);
+              setNewRequestsCount(0);
+            }, 30000);
+            
+            // Only show notifications and play sound for pending orders and when modal is closed
+            if (notificationsEnabled && newPendingOrdersCount > 0 && !open) {
+              if ("Notification" in window && Notification.permission === "granted") {
+                new Notification("New Pending Orders", {
+                  body: `${newPendingOrdersCount} new pending order(s) require attention.`,
+                  icon: "/notification-icon.png",
+                });
               }
-              
-              // Set timer to hide "New" tag after 1 minute (60000ms)
-              newRequestsTimerRef.current = setTimeout(() => {
-                setHasNewRequests(false);
-                setNewRequestsCount(0);
-              }, 60000);
-              
-              if (notificationsEnabled) {
-                if ("Notification" in window && Notification.permission === "granted") {
-                  new Notification("New Orders", {
-                    body: `${newOrdersCount} new order(s) have arrived.`,
-                    icon: "/notification-icon.png",
-                  });
-                }
-                if (audioRef.current) {
-                  audioRef.current.play().catch(e => console.error("Error playing sound:", e));
-                }
+              if (audioRef.current) {
+                audioRef.current.play().catch(e => console.error("Error playing sound:", e));
               }
             }
           }
           
+          // Update the reference for next comparison
+          const currentOrderIds = new Set(itemsList.map(item => item.orderId));
           prevOrderIdsRef.current = currentOrderIds;
         }
 
@@ -658,6 +661,22 @@ const TotalRequestsComponent = () => {
     setNewRequestsCount(0);
   };
 
+  // Handle modal open/close to control notifications
+  const handleModalOpen = () => {
+    setOpen(true);
+    // Clear notifications when modal opens (user has viewed the orders)
+    setHasNewRequests(false);
+    setNewRequestsCount(0);
+    if (newRequestsTimerRef.current) {
+      clearTimeout(newRequestsTimerRef.current);
+    }
+  };
+
+  const handleModalClose = () => {
+    setOpen(false);
+    // Notifications will resume for new orders when modal is closed
+  };
+
   // totalPages is now set from server response
 
   const getRowColor = (productName) => {
@@ -693,17 +712,15 @@ const TotalRequestsComponent = () => {
         onClick={() => {
           resetAllFilters(); // Reset filters before opening
           setCurrentPage(1); // Reset to first page
-          setOpen(true);
+          handleModalOpen();
           fetchOrderData();
-          setHasNewRequests(false); // Turn off notification indicator
-          setNewRequestsCount(0); // Reset notification count
         }}
       >
         <FileText className="w-12 h-12 text-purple-500" />
         <div>
           <h3 className="text-xl font-semibold">Total Requests</h3>
           <p className="text-lg font-bold">
-            {allItems?.length || 0}
+            {hasNewRequests ? "New Order" : "No New Order"}
           </p>
           {hasNewRequests && (
             <div className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full px-2 py-1 text-xs font-bold animate-pulse">
@@ -774,18 +791,6 @@ const TotalRequestsComponent = () => {
                 </label>
               </div>
 
-              {autoRefresh && (
-                <select
-                  value={refreshInterval}
-                  onChange={(e) => setRefreshInterval(Number(e.target.value))}
-                  className="border rounded-md p-1 text-sm"
-                >
-                  <option value="60">1m</option>
-                  <option value="120">2m</option>
-                  <option value="300">5m</option>
-                  <option value="600">10m</option>
-                </select>
-              )}
 
               <div className="flex items-center space-x-1">
                 <input
@@ -1022,7 +1027,7 @@ const TotalRequestsComponent = () => {
           <>
               <div className="flex justify-between mt-4">
               <button
-                onClick={() => setOpen(false)}
+                onClick={handleModalClose}
                 className="bg-red-500 hover:bg-red-400 text-white px-4 py-2 rounded"
               >
                 Close
