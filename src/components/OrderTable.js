@@ -557,6 +557,9 @@ const TotalRequestsComponent = () => {
   };
 
   const handleDownloadExcel = async () => {
+    // Refresh data first
+    await fetchOrderData();
+    
     if (!filteredOrders.length) {
       Swal.fire({
         icon: "warning",
@@ -579,7 +582,6 @@ const TotalRequestsComponent = () => {
       "Product Description": item.product?.description
         ? item.product.description.replace(/\D+$/, "")
         : "N/A",
-      "New Request": item.isNew ? "Yes" : "No",
     }));
 
     const ws = XLSX.utils.json_to_sheet(dataToExport);
@@ -638,7 +640,7 @@ const TotalRequestsComponent = () => {
         });
 
         // Refresh data to ensure UI is in sync
-        fetchOrderData();
+        await fetchOrderData();
       } catch (error) {
         console.error("Error updating order statuses:", error);
         Swal.fire({
@@ -705,6 +707,9 @@ const TotalRequestsComponent = () => {
     (item) => item.order?.items?.[0]?.status === "Processing"
   ).length;
 
+  // Update hasNewRequests based on pending orders
+  const hasPendingOrders = pendingCount > 0;
+
   return (
     <>
       <div
@@ -720,9 +725,9 @@ const TotalRequestsComponent = () => {
         <div>
           <h3 className="text-xl font-semibold">Total Requests</h3>
           <p className="text-lg font-bold">
-            {hasNewRequests ? "New Order" : "No New Order"}
+            {hasPendingOrders ? "New Order" : "No New Order"}
           </p>
-          {hasNewRequests && (
+          {hasPendingOrders && (
             <div className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full px-2 py-1 text-xs font-bold animate-pulse">
               New
             </div>
@@ -759,14 +764,14 @@ const TotalRequestsComponent = () => {
                 </span>{" "}
                 Completed
               </div>
-              {newRequestsCount > 0 && (
+              {/* {newRequestsCount > 0 && (
                 <div className="bg-red-100 p-2 rounded-md animate-pulse">
                   <span className="font-bold text-red-700">
                     {newRequestsCount}
                   </span>{" "}
                   New
                 </div>
-              )}
+              )} */}
             </div>
 
             <div className="flex items-center space-x-2">
@@ -1223,26 +1228,11 @@ const TableRow = memo(({ item, index, getRowColor, handleViewClickStatus, handle
       className={`hover:bg-gray-100 text-black ${
         item.order?.items?.[0]?.status === "Cancelled"
           ? "bg-red-700 text-white"
-          : item.isNew
-          ? "bg-green-50 animate-pulse border-l-4 border-green-500"
           : getRowColor(item.product?.name)
       }`}
     >
-      <td className="border px-2 py-2 md:px-4 relative">
-        {item.isNew && (
-          <span className="absolute left-0 top-0 h-full w-1 bg-green-500"></span>
-        )}
-        <div className="flex items-center">
-          {item.isNew && (
-            <span className="inline-block w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-          )}
-          {item.orderId || "N/A"}
-          {item.isNew && (
-            <span className="ml-2 text-xs bg-green-100 text-green-800 px-1 rounded">
-              New
-            </span>
-          )}
-        </div>
+      <td className="border px-2 py-2 md:px-4">
+        {item.orderId || "N/A"}
       </td>
       <td className="border px-2 py-2 md:px-4">
         {item.id || "N/A"}
@@ -1301,8 +1291,6 @@ const TableRow = memo(({ item, index, getRowColor, handleViewClickStatus, handle
       <td className="border px-2 py-2 md:px-4 text-center flex items-center justify-center space-x-2">
         <button
           className={`text-blue-500 hover:text-blue-700 mr-2 ${
-            item.isNew ? "animate-bounce" : ""
-          } ${
             item.order?.items?.[0]?.status === "Cancelled"
               ? "opacity-50 cursor-not-allowed"
               : ""
@@ -1314,8 +1302,6 @@ const TableRow = memo(({ item, index, getRowColor, handleViewClickStatus, handle
         </button>
         <button
           className={`text-green-500 hover:text-green-700 ${
-            item.isNew ? "animate-bounce" : ""
-          } ${
             item.order?.items?.[0]?.status === "Cancelled"
               ? "opacity-50 cursor-not-allowed"
               : ""
