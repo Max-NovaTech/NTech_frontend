@@ -557,9 +557,6 @@ const TotalRequestsComponent = () => {
   };
 
   const handleDownloadExcel = async () => {
-    // Refresh data first
-    await fetchOrderData();
-    
     if (!filteredOrders.length) {
       Swal.fire({
         icon: "warning",
@@ -610,8 +607,30 @@ const TotalRequestsComponent = () => {
 
         await Promise.all(updatePromises);
 
-        // Update local state
+        // Update local state immediately to reflect changes
         setAllItems((prevItems) =>
+          prevItems.map((item) => {
+            if (
+              item.order?.items?.[0]?.status === "Pending" &&
+              pendingOrderIds.includes(item.order?.id)
+            ) {
+              return {
+                ...item,
+                order: {
+                  ...item.order,
+                  items: item.order.items.map((orderItem) => ({
+                    ...orderItem,
+                    status: "Processing",
+                  })),
+                },
+              };
+            }
+            return item;
+          })
+        );
+
+        // Update paginated items as well to ensure UI consistency
+        setPaginatedItems((prevItems) =>
           prevItems.map((item) => {
             if (
               item.order?.items?.[0]?.status === "Pending" &&
@@ -639,8 +658,14 @@ const TotalRequestsComponent = () => {
           timer: 2000,
         });
 
-        // Refresh data to ensure UI is in sync
-        await fetchOrderData();
+        // Only refresh if there are filters applied or we're not on the first page
+        // This prevents unnecessary data fetching that could clear the table
+        if (currentPage > 1 || deferredOrderIdFilter || deferredPhoneNumberFilter || 
+            selectedProduct || selectedStatusMain || selectedDate || startTime || endTime) {
+          setTimeout(() => {
+            fetchOrderData();
+          }, 100); // Small delay to ensure state updates are processed
+        }
       } catch (error) {
         console.error("Error updating order statuses:", error);
         Swal.fire({
@@ -1316,4 +1341,3 @@ const TableRow = memo(({ item, index, getRowColor, handleViewClickStatus, handle
     </tr>
   );
 });
-
