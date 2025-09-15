@@ -20,6 +20,7 @@ import {
   Save,
   Eye,
   EyeOff,
+  Search,
 } from "lucide-react";
 import { Dialog } from "@headlessui/react";
 import ProductDialog from "../components/ProductDialog";
@@ -602,10 +603,28 @@ const filteredOrders = useMemo(() => {
     }
   }, [navigate]);
 
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Filter users based on search query
+  const filteredUsers = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return users;
+    }
+    
+    const query = searchQuery.toLowerCase().trim();
+    return users.filter(user => 
+      user.name?.toLowerCase().includes(query) ||
+      user.email?.toLowerCase().includes(query) ||
+      user.phone?.toLowerCase().includes(query) ||
+      user.role?.toLowerCase().includes(query) ||
+      user.id?.toString().includes(query)
+    );
+  }, [users, searchQuery]);
+
   // Pagination Logic
   const indexOfLastUser = currentPage * usersPerPage;
   const indexOfFirstUser = indexOfLastUser - usersPerPage;
-  const currentUsers = users.slice(indexOfFirstUser, indexOfLastUser);
+  const currentUsers = filteredUsers.slice(indexOfFirstUser, indexOfLastUser);
 
   console.log("Current Users:", currentUsers);
 
@@ -1120,14 +1139,52 @@ const filteredOrders = useMemo(() => {
 
         <main className="p-6">
           <h2 className="text-xl font-semibold mt-6">Manage Users</h2>
-          <div className="md:flex block justify-between items-center">
+          <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mt-4">
             <button
-              className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-md mt-4 flex items-center"
+              className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-md flex items-center w-fit"
               onClick={openShowModalFunc}
             >
               <Plus className="w-5 h-5 mr-2" />
+              Add User
             </button>
+            
+            {/* Search Bar */}
+            <div className="flex-1 max-w-md">
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Search className="h-5 w-5 text-gray-400" />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search users by name, email, phone, role, or ID..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setCurrentPage(1); // Reset to first page when searching
+                  }}
+                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                />
+              </div>
+            </div>
           </div>
+          
+          {/* Search Results Info */}
+          {searchQuery && (
+            <div className="mt-2 mb-4 text-sm text-gray-600">
+              Found {filteredUsers.length} user{filteredUsers.length !== 1 ? 's' : ''}
+              {searchQuery.trim() && (
+                <button
+                  onClick={() => {
+                    setSearchQuery('');
+                    setCurrentPage(1);
+                  }}
+                  className="ml-2 text-blue-500 hover:text-blue-700 underline"
+                >
+                  Clear search
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="overflow-x-auto w-full min-w-0">
             <table className="table-auto w-full min-w-[600px] mt-4 border-collapse border border-gray-100">
@@ -1236,7 +1293,7 @@ const filteredOrders = useMemo(() => {
 
               {/* Page Numbers with Smart Truncation */}
               {(() => {
-                const totalPages = Math.ceil(users.length / usersPerPage);
+                const totalPages = Math.ceil(filteredUsers.length / usersPerPage);
                 const pages = [];
                 
                 if (totalPages <= 7) {
@@ -1289,7 +1346,7 @@ const filteredOrders = useMemo(() => {
               {/* Next Arrow */}
               <button
                 onClick={() => paginate(currentPage + 1)}
-                disabled={currentPage === Math.ceil(users.length / usersPerPage)}
+                disabled={currentPage === Math.ceil(filteredUsers.length / usersPerPage)}
                 className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium
                           transition-all duration-200 ease-in-out
                           bg-blue-500 text-white border border-blue-500 hover:bg-blue-600 hover:border-blue-600
