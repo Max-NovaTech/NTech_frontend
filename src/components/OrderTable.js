@@ -566,26 +566,32 @@ const TotalRequestsComponent = () => {
   };
 
   const handleDownloadExcel = async () => {
-    // Only export PENDING orders to avoid re-downloading processed ones
+    // Export both PENDING and PROCESSING orders
     const pendingItems = filteredOrders.filter(
       (item) => item.order?.items?.[0]?.status === "Pending"
     );
+    const processingItems = filteredOrders.filter(
+      (item) => item.order?.items?.[0]?.status === "Processing"
+    );
+    
+    const itemsToExport = [...pendingItems, ...processingItems];
 
-    if (!pendingItems.length) {
+    if (!itemsToExport.length) {
       Swal.fire({
         icon: "warning",
-        title: "No Pending Orders",
-        text: "No pending orders available for download. Only pending orders can be exported to avoid duplicates.",
+        title: "No Orders Available",
+        text: "No pending or processing orders available for download.",
       });
       return;
     }
 
+    // Only get IDs of pending orders for status update (processing orders stay unchanged)
     const pendingOrderIds = [
       ...new Set(pendingItems.map((item) => item.order?.id)),
     ].filter(Boolean);
 
-    // Only export phone number and data size in simple format
-    const dataToExport = pendingItems.map((item) => {
+    // Export phone number and data size for all items (pending + processing)
+    const dataToExport = itemsToExport.map((item) => {
       const phoneNumber = item?.mobileNumber || "N/A";
       const dataSize = item.product?.description
         ? item.product.description.replace(/\D+$/, "")
@@ -599,16 +605,16 @@ const TotalRequestsComponent = () => {
 
     const ws = XLSX.utils.json_to_sheet(dataToExport);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Pending_Orders");
+    XLSX.utils.book_append_sheet(wb, ws, "Orders");
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    XLSX.writeFile(wb, `Pending_Orders_${timestamp}.xlsx`);
+    XLSX.writeFile(wb, `Orders_${timestamp}.xlsx`);
 
     // After successful download, update the status of pending items to processing
     if (pendingOrderIds.length > 0) {
       try {
         Swal.fire({
           title: "Processing...",
-          text: `Updating ${pendingOrderIds.length} pending orders to "Processing" status`,
+          text: `Updating ${pendingOrderIds.length} pending orders to "Processing" status. Processing orders remain unchanged.`,
           allowOutsideClick: false,
           didOpen: () => {
             Swal.showLoading();
