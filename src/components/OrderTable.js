@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useDeferredValue, useCallback, memo } from "react";
+import { useState, useEffect, useMemo, useRef, useDeferredValue, useCallback, memo, lazy, Suspense, startTransition } from "react";
 import axios from "axios";
 import * as XLSX from "xlsx";
 import {
@@ -64,10 +64,11 @@ const TotalRequestsComponent = () => {
     date: ''
   });
 
-  // Pagination
+  // Pagination - Optimized for 500 items with virtual scrolling
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(25);
+  const [itemsPerPage] = useState(500);
   const [totalPages, setTotalPages] = useState(1);
+  const [visibleRange, setVisibleRange] = useState({ start: 0, end: 50 }); // Virtual scrolling
 
   // Filters
   const [selectedProduct, setSelectedProduct] = useState("");
@@ -88,6 +89,9 @@ const TotalRequestsComponent = () => {
 
   const fetchOrderData = useCallback(async () => {
     setLoading(true);
+    
+    // Show loading state immediately for better UX
+    setPaginatedItems([]);
     try {
       console.log('Fetching orders from:', `${BASE_URL}/order/admin/allorder`);
       
@@ -179,10 +183,15 @@ const TotalRequestsComponent = () => {
         }
 
         // Set items directly from server response (no client-side processing needed)
-        setAllItems(itemsList);
-        setPaginatedItems(itemsList); // Server already handles pagination
-        setLastFetchTime(currentTime);
-        localStorage.setItem("lastFetchTime", currentTime.toISOString());
+        // Use startTransition for non-urgent updates to prevent blocking
+        startTransition(() => {
+          setAllItems(itemsList);
+          setPaginatedItems(itemsList); // Server already handles pagination
+          setLastFetchTime(currentTime);
+          localStorage.setItem("lastFetchTime", currentTime.toISOString());
+          // Reset virtual scrolling to top
+          setVisibleRange({ start: 0, end: 50 });
+        });
       }
     } catch (error) {
       console.error("Error fetching order data:", error);
@@ -557,34 +566,47 @@ const TotalRequestsComponent = () => {
   };
 
   const handleDownloadExcel = async () => {
-    if (!filteredOrders.length) {
+    // Only export PENDING orders to avoid re-downloading processed ones
+    const pendingItems = filteredOrders.filter(
+      (item) => item.order?.items?.[0]?.status === "Pending"
+    );
+
+    if (!pendingItems.length) {
       Swal.fire({
         icon: "warning",
-        title: "No Data",
-        text: "No data to export!",
+        title: "No Pending Orders",
+        text: "No pending orders available for download. Only pending orders can be exported to avoid duplicates.",
       });
       return;
     }
 
-    // Store pending items for later update
-    const pendingItems = filteredOrders.filter(
-      (item) => item.order?.items?.[0]?.status === "Pending"
-    );
     const pendingOrderIds = [
       ...new Set(pendingItems.map((item) => item.order?.id)),
     ].filter(Boolean);
 
-    const dataToExport = filteredOrders.map((item) => ({
+    // Only export pending orders data
+    const dataToExport = pendingItems.map((item) => ({
+      "Order ID": item.orderId || "N/A",
       "User Phone Number": item?.mobileNumber || "N/A",
+      "Product Name": item.product?.name || "N/A",
       "Product Description": item.product?.description
         ? item.product.description.replace(/\D+$/, "")
         : "N/A",
+      "Price": item.product?.price || 0,
+      "Date": item.order?.createdAt
+        ? new Date(item.order.createdAt).toISOString().split("T")[0]
+        : "N/A",
+      "Time": item.order?.createdAt
+        ? new Date(item.order.createdAt).toLocaleTimeString()
+        : "N/A",
+      "Status": "Pending"
     }));
 
     const ws = XLSX.utils.json_to_sheet(dataToExport);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Orders");
-    XLSX.writeFile(wb, "Filtered_Orders.xlsx");
+    XLSX.utils.book_append_sheet(wb, ws, "Pending_Orders");
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    XLSX.writeFile(wb, `Pending_Orders_${timestamp}.xlsx`);
 
     // After successful download, update the status of pending items to processing
     if (pendingOrderIds.length > 0) {
@@ -658,14 +680,11 @@ const TotalRequestsComponent = () => {
           timer: 2000,
         });
 
-        // Only refresh if there are filters applied or we're not on the first page
-        // This prevents unnecessary data fetching that could clear the table
-        if (currentPage > 1 || deferredOrderIdFilter || deferredPhoneNumberFilter || 
-            selectedProduct || selectedStatusMain || selectedDate || startTime || endTime) {
-          setTimeout(() => {
-            fetchOrderData();
-          }, 100); // Small delay to ensure state updates are processed
-        }
+        // Always refresh data after status update to ensure UI shows updated status
+        // and prevents re-downloading the same orders
+        setTimeout(() => {
+          fetchOrderData();
+        }, 100); // Small delay to ensure state updates are processed
       } catch (error) {
         console.error("Error updating order statuses:", error);
         Swal.fire({
@@ -677,10 +696,12 @@ const TotalRequestsComponent = () => {
     }
   };
 
-  const paginate = (pageNumber) => {
-    setCurrentPage(pageNumber);
-    // fetchOrderData will be called automatically due to useEffect dependency
-  };
+  const paginate = useCallback((pageNumber) => {
+    if (pageNumber !== currentPage && !loading) {
+      setCurrentPage(pageNumber);
+      // fetchOrderData will be called automatically due to useEffect dependency
+    }
+  }, [currentPage, loading]);
 
   const handleRefresh = () => {
     fetchOrderData();
@@ -1079,58 +1100,18 @@ const TotalRequestsComponent = () => {
             </div>
 
               <div className="mt-4 text-sm text-gray-600">
-                Showing {paginatedItems.length} of {filteredOrders.length}{" "}
-                results
+                Showing {itemsPerPage} of {paginatedItems.length} results (Page {currentPage} of {totalPages})
               </div>
 
-              <div className="w-full h-[400px] overflow-y-auto mt-4">
-                <table className="w-full border-collapse border border-gray-300 text-sm md:text-base">
-                  <thead className="bg-sky-700 text-white sticky top-0">
-                    <tr>
-                      <th className="border p-2 whitespace-nowrap">Order ID</th>
-                      <th className="border p-2 whitespace-nowrap">Item ID</th>
-                      <th className="border p-2 whitespace-nowrap">Username</th>
-                      {/* <th className="border p-2 whitespace-nowrap">
-                        User Phone
-                      </th> */}
-                      <th className="border p-2 whitespace-nowrap">
-                        Phone Number
-                      </th>
-                      <th className="border p-2 whitespace-nowrap">Status</th>
-                      <th className="border p-2 whitespace-nowrap">Name</th>
-                      <th className="border p-2 whitespace-nowrap">
-                        Description
-                      </th>
-                      <th className="border p-2 whitespace-nowrap">Date</th>
-                      <th className="border p-2 whitespace-nowrap">Time</th>
-                      <th className="border p-2 whitespace-nowrap">Price</th>
-                      <th className="border p-2 whitespace-nowrap text-center">
-                        Action
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {paginatedItems.length > 0 ? (
-                      paginatedItems.map((item, index) => (
-                        <TableRow
-                          key={`${item.id}-${item.orderId}`}
-                          item={item}
-                          index={index}
-                          getRowColor={getRowColor}
-                          handleViewClickStatus={handleViewClickStatus}
-                          handleUpdateStatus={handleUpdateStatus}
-                        />
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan="11" className="text-center p-4">
-                          No items found
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              <VirtualizedTable 
+                loading={loading}
+                items={paginatedItems}
+                visibleRange={visibleRange}
+                setVisibleRange={setVisibleRange}
+                getRowColor={getRowColor}
+                handleViewClickStatus={handleViewClickStatus}
+                handleUpdateStatus={handleUpdateStatus}
+              />
           </>
 
           {/* Pagination controls */}
@@ -1243,6 +1224,104 @@ const TotalRequestsComponent = () => {
     </>
   );
 };
+
+// Virtualized Table Component for handling large datasets efficiently
+const VirtualizedTable = memo(({ loading, items, visibleRange, setVisibleRange, getRowColor, handleViewClickStatus, handleUpdateStatus }) => {
+  const containerRef = useRef(null);
+  const ROW_HEIGHT = 60; // Approximate height of each row in pixels
+  const BUFFER_SIZE = 10; // Extra rows to render outside visible area
+
+  // Calculate visible items based on scroll position
+  const handleScroll = useCallback((e) => {
+    const scrollTop = e.target.scrollTop;
+    const containerHeight = e.target.clientHeight;
+    
+    const startIndex = Math.floor(scrollTop / ROW_HEIGHT);
+    const endIndex = Math.min(
+      startIndex + Math.ceil(containerHeight / ROW_HEIGHT) + BUFFER_SIZE,
+      items.length
+    );
+    
+    const newStart = Math.max(0, startIndex - BUFFER_SIZE);
+    const newEnd = endIndex;
+    
+    // Only update if range changed significantly to avoid excessive re-renders
+    if (Math.abs(newStart - visibleRange.start) > 5 || Math.abs(newEnd - visibleRange.end) > 5) {
+      setVisibleRange({ start: newStart, end: newEnd });
+    }
+  }, [items.length, visibleRange.start, visibleRange.end, setVisibleRange]);
+
+  // Throttled scroll handler to improve performance
+  const throttledScrollHandler = useMemo(() => {
+    let timeoutId;
+    return (e) => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => handleScroll(e), 16); // ~60fps
+    };
+  }, [handleScroll]);
+
+  const visibleItems = useMemo(() => {
+    return items.slice(visibleRange.start, visibleRange.end);
+  }, [items, visibleRange.start, visibleRange.end]);
+
+  const totalHeight = items.length * ROW_HEIGHT;
+  const offsetY = visibleRange.start * ROW_HEIGHT;
+
+  if (loading) {
+    return (
+      <div className="w-full h-[400px] flex justify-center items-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+        <span className="ml-3 text-gray-600">Loading orders...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full h-[400px] overflow-y-auto mt-4" 
+         ref={containerRef}
+         onScroll={throttledScrollHandler}>
+      <div style={{ height: totalHeight, position: 'relative' }}>
+        <table className="w-full border-collapse border border-gray-300 text-sm md:text-base">
+          <thead className="bg-sky-700 text-white sticky top-0 z-10">
+            <tr>
+              <th className="border p-2 whitespace-nowrap">Order ID</th>
+              <th className="border p-2 whitespace-nowrap">Item ID</th>
+              <th className="border p-2 whitespace-nowrap">Username</th>
+              <th className="border p-2 whitespace-nowrap">Phone Number</th>
+              <th className="border p-2 whitespace-nowrap">Status</th>
+              <th className="border p-2 whitespace-nowrap">Name</th>
+              <th className="border p-2 whitespace-nowrap">Description</th>
+              <th className="border p-2 whitespace-nowrap">Date</th>
+              <th className="border p-2 whitespace-nowrap">Time</th>
+              <th className="border p-2 whitespace-nowrap">Price</th>
+              <th className="border p-2 whitespace-nowrap text-center">Action</th>
+            </tr>
+          </thead>
+          <tbody style={{ transform: `translateY(${offsetY}px)` }}>
+            {visibleItems.length > 0 ? (
+              visibleItems.map((item, index) => (
+                <TableRow
+                  key={`${item.id}-${item.orderId}-${visibleRange.start + index}`}
+                  item={item}
+                  index={visibleRange.start + index}
+                  getRowColor={getRowColor}
+                  handleViewClickStatus={handleViewClickStatus}
+                  handleUpdateStatus={handleUpdateStatus}
+                />
+              ))
+            ) : (
+              <tr>
+                <td colSpan="11" className="text-center p-4">
+                  No items found
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+});
 
 export default TotalRequestsComponent;
 

@@ -260,12 +260,21 @@ const PaymentModal = () => {
               >
                 <Dialog.Panel className="w-full max-w-5xl transform overflow-hidden rounded-xl bg-white text-left align-middle shadow-2xl transition-all">
                   <div className="p-6">
-                    <Dialog.Title
-                      as="h3"
-                      className="text-2xl font-semibold text-gray-800 mb-4"
-                    >
-                      💰 Payment Received Messages
-                    </Dialog.Title>
+                    <div className="flex justify-between items-center mb-4">
+                      <Dialog.Title
+                        as="h3"
+                        className="text-2xl font-semibold text-gray-800"
+                      >
+                        💰 Payment Received Messages
+                      </Dialog.Title>
+                      <button
+                        type="button"
+                        className="bg-red-500 text-white px-5 py-2 rounded hover:bg-red-600 transition shadow"
+                        onClick={closeModal}
+                      >
+                        Close
+                      </button>
+                    </div>
 
                     <div className="mb-4">
                       <input
@@ -423,25 +432,6 @@ const PaymentModal = () => {
                       )}
                     </div>
 
-                    <div className="mt-6 flex justify-end">
-                      {/* <select
-                        className="px-4 py-2 border rounded shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      >
-                        <option value="">Select User</option>
-                        {users.map((user) => (
-                          <option key={user.id} value={user.id}>
-                            {user.name}
-                          </option>
-                        ))}
-                      </select> */}
-                      <button
-                        type="button"
-                        className="bg-red-500 text-white px-5 py-2 rounded hover:bg-red-600 transition shadow"
-                        onClick={closeModal}
-                      >
-                        Close
-                      </button>
-                    </div>
                   </div>
                 </Dialog.Panel>
               </Transition.Child>
