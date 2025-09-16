@@ -584,23 +584,18 @@ const TotalRequestsComponent = () => {
       ...new Set(pendingItems.map((item) => item.order?.id)),
     ].filter(Boolean);
 
-    // Only export pending orders data
-    const dataToExport = pendingItems.map((item) => ({
-      "Order ID": item.orderId || "N/A",
-      "User Phone Number": item?.mobileNumber || "N/A",
-      "Product Name": item.product?.name || "N/A",
-      "Product Description": item.product?.description
+    // Only export phone number and data size in simple format
+    const dataToExport = pendingItems.map((item) => {
+      const phoneNumber = item?.mobileNumber || "N/A";
+      const dataSize = item.product?.description
         ? item.product.description.replace(/\D+$/, "")
-        : "N/A",
-      "Price": item.product?.price || 0,
-      "Date": item.order?.createdAt
-        ? new Date(item.order.createdAt).toISOString().split("T")[0]
-        : "N/A",
-      "Time": item.order?.createdAt
-        ? new Date(item.order.createdAt).toLocaleTimeString()
-        : "N/A",
-      "Status": "Pending"
-    }));
+        : "N/A";
+      
+      return {
+        "Phone Number": phoneNumber,
+        "Data Size": dataSize
+      };
+    });
 
     const ws = XLSX.utils.json_to_sheet(dataToExport);
     const wb = XLSX.utils.book_new();
