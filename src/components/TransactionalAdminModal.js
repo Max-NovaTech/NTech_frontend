@@ -1,8 +1,10 @@
 import { Fragment, useEffect, useState, useMemo, useCallback, memo } from "react";
 import { Dialog, Transition } from "@headlessui/react";
 import axios from "axios";
+import * as XLSX from "xlsx";
 import BASE_URL from "../endpoints/endpoints";
 import { ArrowRightLeft, Download, Search } from "lucide-react";
+import { initSocket, subscribeToDataRefresh } from "../services/socketService";
 
 // Memoized Tabs Component
 const Tabs = memo(({ tabs, activeTab, setActiveTab }) => (
@@ -331,6 +333,7 @@ const TransactionalAdminModal = () => {
     { id: 'transactions', name: 'Transactions' },
     { id: 'sales', name: 'Sales Summary' },
     { id: 'balance', name: 'Admin Balance Sheet' },
+    { id: 'shopOrders', name: 'Shop Orders' },
   ];
 
   const [isOpen, setIsOpen] = useState(false);
@@ -366,6 +369,21 @@ const TransactionalAdminModal = () => {
   // Search results state
   const [searchResults, setSearchResults] = useState([]);
   const [searchPagination, setSearchPagination] = useState(null);
+
+  // Shop orders state
+  const [shopOrders, setShopOrders] = useState([]);
+  const [shopOrdersLoading, setShopOrdersLoading] = useState(false);
+
+  // Shop orders filters
+  const [shopCustomerFilter, setShopCustomerFilter] = useState("");
+  const [shopPhoneFilter, setShopPhoneFilter] = useState("");
+  const [shopProductFilter, setShopProductFilter] = useState("");
+  const [shopReferenceFilter, setShopReferenceFilter] = useState("");
+  const [shopStatusFilter, setShopStatusFilter] = useState("");
+  const [shopStartDate, setShopStartDate] = useState("");
+  const [shopEndDate, setShopEndDate] = useState("");
+  const [shopCurrentPage, setShopCurrentPage] = useState(1);
+  const [shopItemsPerPage] = useState(20);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -485,6 +503,55 @@ const TransactionalAdminModal = () => {
     }
   }, [startDate, endDate, debouncedSearch, typeFilter, amountFilter]);
 
+  // Fetch shop orders
+  const fetchShopOrders = useCallback(async () => {
+    try {
+      setShopOrdersLoading(true);
+      const response = await axios.get(`${BASE_URL}/api/shop/orders`);
+      if (response.data) {
+        setShopOrders(response.data);
+      }
+    } catch (error) {
+      console.error("Error fetching shop orders:", error);
+    } finally {
+      setShopOrdersLoading(false);
+    }
+  }, []);
+
+  // Fetch shop orders when modal opens or tab is active
+  useEffect(() => {
+    if (isOpen) {
+      fetchShopOrders();
+    }
+  }, [isOpen, fetchShopOrders]);
+
+  // Socket listener for real-time updates
+  useEffect(() => {
+    initSocket();
+    const unsubscribe = subscribeToDataRefresh((data) => {
+      // console.log('[TransactionalAdminModal] Received data refresh event:', data);
+      // Clear cache to force fresh data fetch
+      setDataCache(new Map());
+      if (isOpen) {
+        fetchTransactions();
+        if (activeTab === 'shopOrders') {
+          fetchShopOrders();
+        }
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [isOpen, activeTab, fetchTransactions, fetchShopOrders]);
+
+  // Fetch admin balance data when modal opens or filters change
+  useEffect(() => {
+    if (isOpen && activeTab === 'balance') {
+      fetchAdminBalanceData().then(setAdminBalanceApiData);
+    }
+  }, [isOpen, activeTab, fetchAdminBalanceData, debouncedSearch, typeFilter, amountFilter, startDate, endDate]);
+
   // Filter all transactions and paginate for display
   const filteredTransactions = useMemo(() => {
     if (!allTransactions.length) return [];
@@ -536,6 +603,81 @@ const TransactionalAdminModal = () => {
 
   // Calculate total pages
   const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage);
+
+  // Filtered shop orders
+  const filteredShopOrders = useMemo(() => {
+    if (!shopOrders.length) return [];
+    
+    let filtered = shopOrders;
+
+    // Customer filter
+    if (shopCustomerFilter) {
+      const searchLower = shopCustomerFilter.toLowerCase();
+      filtered = filtered.filter((order) =>
+        order.fullName?.toLowerCase().includes(searchLower)
+      );
+    }
+
+    // Phone filter
+    if (shopPhoneFilter) {
+      filtered = filtered.filter((order) =>
+        order.phoneNumber?.includes(shopPhoneFilter)
+      );
+    }
+
+    // Product filter
+    if (shopProductFilter) {
+      const searchLower = shopProductFilter.toLowerCase();
+      filtered = filtered.filter((order) =>
+        order.productName?.toLowerCase().includes(searchLower)
+      );
+    }
+
+    // Reference filter
+    if (shopReferenceFilter) {
+      const searchLower = shopReferenceFilter.toLowerCase();
+      filtered = filtered.filter((order) =>
+        order.reference?.toLowerCase().includes(searchLower)
+      );
+    }
+
+    // Status filter
+    if (shopStatusFilter) {
+      filtered = filtered.filter((order) => 
+        (order.status || "Pending") === shopStatusFilter
+      );
+    }
+
+    // Date range filter
+    if (shopStartDate && shopEndDate) {
+      const start = new Date(shopStartDate);
+      const end = new Date(shopEndDate);
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
+      
+      filtered = filtered.filter((order) => {
+        const orderDate = new Date(order.createdAt);
+        return orderDate >= start && orderDate <= end;
+      });
+    }
+
+    return filtered;
+  }, [shopOrders, shopCustomerFilter, shopPhoneFilter, shopProductFilter, shopReferenceFilter, shopStatusFilter, shopStartDate, shopEndDate]);
+
+  // Paginated shop orders
+  const paginatedShopOrders = useMemo(() => {
+    const startIndex = (shopCurrentPage - 1) * shopItemsPerPage;
+    const endIndex = startIndex + shopItemsPerPage;
+    return filteredShopOrders.slice(startIndex, endIndex);
+  }, [filteredShopOrders, shopCurrentPage, shopItemsPerPage]);
+
+  // Calculate total pages for shop orders
+  const shopTotalPages = Math.ceil(filteredShopOrders.length / shopItemsPerPage);
+
+  // Reset shop page when filters change
+  useEffect(() => {
+    setShopCurrentPage(1);
+  }, [shopCustomerFilter, shopPhoneFilter, shopProductFilter, shopReferenceFilter, shopStatusFilter, shopStartDate, shopEndDate]);
 
   // Optimized user sales data calculation using ALL data
   const userSalesData = useMemo(() => {
@@ -842,63 +984,76 @@ const TransactionalAdminModal = () => {
 
   const closeModal = useCallback(() => setIsOpen(false), []);
 
-  const exportToCSV = useCallback(async () => {
+  const exportToExcel = useCallback(async () => {
     setExportLoading(true);
     try {
-      let csvContent = "";
+      let data = [];
+      let sheetName = activeTab;
 
       if (activeTab === "sales") {
-        const headers = ["User", "Total Orders", "Total Sales Amount", "Average Order Value"];
-        const rows = userSalesData.map((user) => [
-          user.userName,
-          user.orderCount,
-          Math.abs(user.totalSales),
-          Math.abs(user.totalSales / user.orderCount),
-        ]);
-        csvContent = [headers.join(","), ...rows.map((row) => row.join(","))].join("\n");
+        data = userSalesData.map((user) => ({
+          "User": user.userName,
+          "Total Orders": user.orderCount,
+          "Total Sales Amount": Math.abs(user.totalSales),
+          "Average Order Value": Math.abs(user.totalSales / user.orderCount),
+          "Current Balance": user.loanBalance || 0,
+        }));
+        sheetName = "Sales Summary";
       } else if (activeTab === "balance") {
-        const headers = ["Metric", "Value"];
-        const rows = [
-          ["Total Revenue", adminBalanceData.totalRevenue],
-          ["Total Top-ups", adminBalanceData.totalTopups],
-          ["Total Expenses", Math.abs(adminBalanceData.totalExpenses)],
-          ["Net Position", adminBalanceData.netPosition],
-          ["Total Orders", adminBalanceData.orderCount],
-          ["Active Users", adminBalanceData.activeUsers],
-          ["Success Rate (%)", 
-            adminBalanceData.topupCount + adminBalanceData.rejectedTopupCount > 0
+        data = [
+          { "Metric": "Total Revenue", "Value": adminBalanceData.totalRevenue },
+          { "Metric": "Total Top-ups", "Value": adminBalanceData.totalTopups },
+          { "Metric": "Total Refunds", "Value": adminBalanceData.totalRefunds },
+          { "Metric": "Total Expenses", "Value": Math.abs(adminBalanceData.totalExpenses) },
+          { "Metric": "Net Position", "Value": adminBalanceData.netPosition },
+          { "Metric": "Total Orders", "Value": adminBalanceData.orderCount },
+          { "Metric": "Active Users", "Value": adminBalanceData.activeUsers },
+          { "Metric": "Success Rate (%)", "Value": adminBalanceData.topupCount + adminBalanceData.rejectedTopupCount > 0
               ? ((adminBalanceData.topupCount / 
                   (adminBalanceData.topupCount + adminBalanceData.rejectedTopupCount)) * 100).toFixed(1)
-              : 0],
+              : 0 },
         ];
-        csvContent = [headers.join(","), ...rows.map((row) => row.join(","))].join("\n");
+        sheetName = "Admin Balance Sheet";
+      } else if (activeTab === "shopOrders") {
+        // Export filtered shop orders
+        data = filteredShopOrders.map((order) => ({
+          "ID": order.id,
+          "Customer": order.fullName || "N/A",
+          "Phone": order.phoneNumber || "",
+          "Product": order.productName || "N/A",
+          "Description": order.productDescription || "N/A",
+          "Amount": order.productPrice || order.amount || 0,
+          "Reference": order.reference || "",
+          "Status": order.status || "Pending",
+          "Date": new Date(order.createdAt).toLocaleString(),
+        }));
+        sheetName = "Shop Orders";
       } else {
-        const headers = ["Type", "Description", "Amount", "Balance", "User", "Date"];
-        const rows = filteredTransactions.map((tx) => [
-          tx.type,
-          `"${tx.description || ""}"`,
-          tx.amount,
-          tx.balance,
-          tx.user?.name || "Unknown",
-          new Date(tx.createdAt).toLocaleString(),
-        ]);
-        csvContent = [headers.join(","), ...rows.map((row) => row.join(","))].join("\n");
+        // Transactions tab
+        data = filteredTransactions.map((tx) => ({
+          "Type": tx.type,
+          "Description": tx.description || "",
+          "Amount": tx.amount,
+          "Balance": tx.balance,
+          "User": tx.user?.name || "Unknown",
+          "Date": new Date(tx.createdAt).toLocaleString(),
+        }));
+        sheetName = "Transactions";
       }
 
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.setAttribute("href", url);
-      link.setAttribute("download", `${activeTab}_${new Date().toISOString().slice(0, 10)}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      // Create workbook and worksheet
+      const worksheet = XLSX.utils.json_to_sheet(data);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+
+      // Generate Excel file and download
+      const fileName = `${activeTab}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      XLSX.writeFile(workbook, fileName);
     } catch (err) {
       console.error("Failed to export data", err);
     }
     setExportLoading(false);
-  }, [filteredTransactions, userSalesData, adminBalanceData, activeTab]);
+  }, [filteredTransactions, userSalesData, adminBalanceData, filteredShopOrders, activeTab]);
 
   // Load all data when modal opens
   useEffect(() => {
@@ -952,7 +1107,7 @@ const TransactionalAdminModal = () => {
                   <Dialog.Title as="div" className="text-xl font-bold text-gray-900 mb-4 flex justify-between items-center sticky top-0 bg-white p-4 z-20 border-b">
                     <span>Transactional Overview</span>
                     <button
-                      onClick={exportToCSV}
+                      onClick={exportToExcel}
                       disabled={exportLoading}
                       className="text-sm px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 flex items-center"
                     >
@@ -1069,22 +1224,26 @@ const TransactionalAdminModal = () => {
                                     </tr>
                                   ) : (
                                     <>
-                                      <div style={{ 
-                                        position: 'absolute', 
-                                        top: 0, 
-                                        left: 0, 
-                                        width: '100%', 
-                                        transform: `translateY(${offsetY}px)` 
-                                      }}>
-                                        {visibleItems.map((tx, index) => (
-                                          <TransactionRow
-                                            key={`${tx.id}-${startIndex + index}`}
-                                            tx={tx}
-                                            index={startIndex + index}
-                                            style={{ height: '50px' }}
-                                          />
-                                        ))}
-                                      </div>
+                                      {/* Top spacer row for virtual scroll */}
+                                      {offsetY > 0 && (
+                                        <tr style={{ height: `${offsetY}px` }}>
+                                          <td colSpan="7"></td>
+                                        </tr>
+                                      )}
+                                      {visibleItems.map((tx, index) => (
+                                        <TransactionRow
+                                          key={`${tx.id}-${startIndex + index}`}
+                                          tx={tx}
+                                          index={startIndex + index}
+                                          style={{ height: '50px' }}
+                                        />
+                                      ))}
+                                      {/* Bottom spacer row */}
+                                      {(totalHeight - offsetY - (visibleItems.length * 50)) > 0 && (
+                                        <tr style={{ height: `${totalHeight - offsetY - (visibleItems.length * 50)}px` }}>
+                                          <td colSpan="7"></td>
+                                        </tr>
+                                      )}
                                       {!filteredTransactions.length && !loading && (
                                         <tr>
                                           <td colSpan="7" className="text-center py-8 text-gray-500">
@@ -1149,6 +1308,188 @@ const TransactionalAdminModal = () => {
 
                       {activeTab === "balance" && (
                         <AdminBalanceSheet balanceData={adminBalanceData} />
+                      )}
+
+                      {activeTab === "shopOrders" && (
+                        <div className="bg-white border rounded-lg p-4">
+                          <h3 className="text-lg font-semibold mb-3 text-gray-900">
+                            Shop Orders
+                          </h3>
+                          
+                          {/* Shop Orders Filters */}
+                          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2 mb-4">
+                            <input
+                              type="text"
+                              placeholder="Customer name..."
+                              value={shopCustomerFilter}
+                              onChange={(e) => setShopCustomerFilter(e.target.value)}
+                              className="px-3 py-2 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <input
+                              type="text"
+                              placeholder="Phone..."
+                              value={shopPhoneFilter}
+                              onChange={(e) => setShopPhoneFilter(e.target.value)}
+                              className="px-3 py-2 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <input
+                              type="text"
+                              placeholder="Product..."
+                              value={shopProductFilter}
+                              onChange={(e) => setShopProductFilter(e.target.value)}
+                              className="px-3 py-2 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <input
+                              type="text"
+                              placeholder="Reference..."
+                              value={shopReferenceFilter}
+                              onChange={(e) => setShopReferenceFilter(e.target.value)}
+                              className="px-3 py-2 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <select
+                              value={shopStatusFilter}
+                              onChange={(e) => setShopStatusFilter(e.target.value)}
+                              className="px-3 py-2 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              <option value="">All Status</option>
+                              <option value="Pending">Pending</option>
+                              <option value="Processing">Processing</option>
+                              <option value="Completed">Completed</option>
+                              <option value="Cancelled">Cancelled</option>
+                            </select>
+                            <input
+                              type="date"
+                              value={shopStartDate}
+                              onChange={(e) => setShopStartDate(e.target.value)}
+                              className="px-3 py-2 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              title="Start Date"
+                            />
+                            <input
+                              type="date"
+                              value={shopEndDate}
+                              onChange={(e) => setShopEndDate(e.target.value)}
+                              className="px-3 py-2 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              title="End Date"
+                            />
+                          </div>
+                          
+                          {/* Clear Filters Button */}
+                          {(shopCustomerFilter || shopPhoneFilter || shopProductFilter || shopReferenceFilter || shopStatusFilter || shopStartDate || shopEndDate) && (
+                            <button
+                              onClick={() => {
+                                setShopCustomerFilter("");
+                                setShopPhoneFilter("");
+                                setShopProductFilter("");
+                                setShopReferenceFilter("");
+                                setShopStatusFilter("");
+                                setShopStartDate("");
+                                setShopEndDate("");
+                              }}
+                              className="mb-4 px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 rounded"
+                            >
+                              Clear Filters
+                            </button>
+                          )}
+
+                          {shopOrdersLoading ? (
+                            <div className="text-center py-8 text-gray-500">
+                              Loading shop orders...
+                            </div>
+                          ) : filteredShopOrders.length === 0 ? (
+                            <div className="text-center py-8 text-gray-500">
+                              No shop orders found.
+                            </div>
+                          ) : (
+                            <div className="overflow-x-auto">
+                              <table className="min-w-full text-sm">
+                                <thead className="bg-gray-50">
+                                  <tr>
+                                    <th className="px-4 py-2 text-left border">ID</th>
+                                    <th className="px-4 py-2 text-left border">Customer</th>
+                                    <th className="px-4 py-2 text-left border">Phone</th>
+                                    <th className="px-4 py-2 text-left border">Product</th>
+                                    <th className="px-4 py-2 text-left border">Description</th>
+                                    <th className="px-4 py-2 text-right border">Amount</th>
+                                    <th className="px-4 py-2 text-left border">Reference</th>
+                                    <th className="px-4 py-2 text-left border">Status</th>
+                                    <th className="px-4 py-2 text-left border">Date</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {paginatedShopOrders.map((order, index) => (
+                                    <tr key={order.id} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                                      <td className="px-4 py-2 border">{order.id}</td>
+                                      <td className="px-4 py-2 border font-medium">{order.fullName || "N/A"}</td>
+                                      <td className="px-4 py-2 border">{order.phoneNumber}</td>
+                                      <td className="px-4 py-2 border">{order.productName || "N/A"}</td>
+                                      <td className="px-4 py-2 border">{order.productDescription || "N/A"}</td>
+                                      <td className="px-4 py-2 border text-right font-semibold text-green-600">
+                                        {formatAmount(order.productPrice || order.amount)}
+                                      </td>
+                                      <td className="px-4 py-2 border text-xs">{order.reference}</td>
+                                      <td className="px-4 py-2 border">
+                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                          order.status === "Completed" ? "bg-green-100 text-green-800" :
+                                          order.status === "Processing" ? "bg-blue-100 text-blue-800" :
+                                          order.status === "Cancelled" ? "bg-red-100 text-red-800" :
+                                          "bg-yellow-100 text-yellow-800"
+                                        }`}>
+                                          {order.status || "Pending"}
+                                        </span>
+                                      </td>
+                                      <td className="px-4 py-2 border whitespace-nowrap">
+                                        {formatDate(order.createdAt)}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                              
+                              {/* Summary */}
+                              <div className="mt-4 text-sm text-gray-600">
+                                Showing {((shopCurrentPage - 1) * shopItemsPerPage) + 1} to {Math.min(shopCurrentPage * shopItemsPerPage, filteredShopOrders.length)} of {filteredShopOrders.length} shop orders | 
+                                Total Amount: {formatAmount(filteredShopOrders.reduce((sum, o) => sum + (o.productPrice || o.amount || 0), 0))}
+                              </div>
+                              
+                              {/* Pagination */}
+                              {shopTotalPages > 1 && (
+                                <div className="flex justify-center items-center gap-2 mt-4">
+                                  <button
+                                    onClick={() => setShopCurrentPage(1)}
+                                    disabled={shopCurrentPage === 1}
+                                    className="px-3 py-1 border rounded disabled:opacity-50 hover:bg-gray-50 text-sm"
+                                  >
+                                    First
+                                  </button>
+                                  <button
+                                    onClick={() => setShopCurrentPage(prev => Math.max(1, prev - 1))}
+                                    disabled={shopCurrentPage === 1}
+                                    className="px-3 py-1 border rounded disabled:opacity-50 hover:bg-gray-50 text-sm"
+                                  >
+                                    Previous
+                                  </button>
+                                  <span className="px-3 py-1 text-sm">
+                                    Page {shopCurrentPage} of {shopTotalPages}
+                                  </span>
+                                  <button
+                                    onClick={() => setShopCurrentPage(prev => Math.min(shopTotalPages, prev + 1))}
+                                    disabled={shopCurrentPage === shopTotalPages}
+                                    className="px-3 py-1 border rounded disabled:opacity-50 hover:bg-gray-50 text-sm"
+                                  >
+                                    Next
+                                  </button>
+                                  <button
+                                    onClick={() => setShopCurrentPage(shopTotalPages)}
+                                    disabled={shopCurrentPage === shopTotalPages}
+                                    className="px-3 py-1 border rounded disabled:opacity-50 hover:bg-gray-50 text-sm"
+                                  >
+                                    Last
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>

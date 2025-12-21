@@ -1,4 +1,4 @@
-import React, { useState, Fragment, useEffect, useRef } from "react";
+import React, { useState, Fragment, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
 import { Dialog, Transition } from "@headlessui/react";
 import Swal from "sweetalert2";
@@ -6,6 +6,7 @@ import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import BASE_URL from "../endpoints/endpoints";
 import { BadgeCent } from "lucide-react";
+import { initSocket, subscribeToDataRefresh } from "../services/socketService";
 
 const truncateMessage = (message, limit = 50) => {
   if (message.length <= limit) return message;
@@ -123,6 +124,21 @@ const PaymentModal = () => {
     fetchUsers();
   }, []);
 
+  // Socket listener for real-time updates
+  useEffect(() => {
+    initSocket();
+    const unsubscribe = subscribeToDataRefresh((data) => {
+      /* console.log('[PaymentModal] Received data refresh event:', data); */
+      if (isOpen) {
+        fetchMessages(true);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [isOpen]);
+
   // Get filtered data
   const getFilteredData = () => {
     const data = paymentData?.data || [];
@@ -149,31 +165,31 @@ const PaymentModal = () => {
 
   // Pagination handlers
   const goToPage = (page) => {
-    console.log('Going to page:', page); // Debug log
+    /* console.log('Going to page:', page); */ // Debug log
     if (page >= 1 && page <= totalPages) {
       setCurrentPage(page);
     }
   };
 
   const goToFirst = () => {
-    console.log('Going to first page');
+    /* console.log('Going to first page'); */
     setCurrentPage(1);
   };
 
   const goToLast = () => {
-    console.log('Going to last page:', totalPages);
+    /* console.log('Going to last page:', totalPages); */
     setCurrentPage(totalPages);
   };
 
   const goToPrevious = () => {
-    console.log('Going to previous page, current:', currentPage); // Debug log
+    /* console.log('Going to previous page, current:', currentPage); */ // Debug log
     if (currentPage > 1) {
       setCurrentPage(currentPage - 1);
     }
   };
 
   const goToNext = () => {
-    console.log('Going to next page, current:', currentPage); // Debug log
+    /* console.log('Going to next page, current:', currentPage); */ // Debug log
     if (currentPage < totalPages) {
       setCurrentPage(currentPage + 1);
     }

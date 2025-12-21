@@ -91,7 +91,7 @@ const UserDashboard = () => {
 
         // Call the logout API
         await axios.request(config);
-        console.log("User logged out successfully from server");
+        // console.log("User logged out successfully from server");
       }
     } catch (error) {
       console.error("Error during server logout:", error);
@@ -238,7 +238,7 @@ const UserDashboard = () => {
     }
   };
 
-  console.log("Loan Balance:", loanBalance);
+  // console.log("Loan Balance:", loanBalance);
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -273,7 +273,7 @@ const UserDashboard = () => {
       const response = await fetch(`${BASE_URL}/api/cart/${userId}`);
       const data = await response.json();
 
-      console.log("Fetched Cart Data:", data);
+      // console.log("Fetched Cart Data:", data);
 
       setCart(Array.isArray(data.items) ? data.items : []);
     } catch (error) {
@@ -792,7 +792,7 @@ const handleCategorySelect = (category) => {
     }
   };
 
-  console.log("orderHistory", orderHistory);
+  // console.log("orderHistory", orderHistory);
 
   const [dailySalesOpen, setDailySalesOpen] = useState(false);
 

@@ -64,7 +64,7 @@ export default function TopupsOrdered({
 
       clearTimeout(timeoutId);
 
-      console.log("Fetched topups:", response);
+      // console.log("Fetched topups:", response);
 
       // Check for new topups
       if (lastTopupsTotal > 0 && response.data.length > lastTopupsTotal) {

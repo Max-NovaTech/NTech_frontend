@@ -13,6 +13,7 @@ import {
 import { Dialog } from "@headlessui/react";
 import Swal from "sweetalert2";
 import BASE_URL from "../endpoints/endpoints";
+import { initSocket, subscribeToDataRefresh } from "../services/socketService";
 
 const TotalRequestsComponent = () => {
   const resetAllFilters = () => {
@@ -93,7 +94,7 @@ const TotalRequestsComponent = () => {
     // Show loading state immediately for better UX
     setPaginatedItems([]);
     try {
-      console.log('Fetching orders from:', `${BASE_URL}/order/admin/allorder`);
+      /* console.log('Fetching orders from:', `${BASE_URL}/order/admin/allorder`); */
       
       // Build query parameters for server-side filtering
       const params = {
@@ -125,7 +126,7 @@ const TotalRequestsComponent = () => {
         },
         params
       });
-      console.log('API Response:', response.data);
+      /* console.log('API Response:', response.data); */
       const currentTime = new Date();
 
       // Handle the new paginated response structure
@@ -255,6 +256,19 @@ const TotalRequestsComponent = () => {
     };
   }, [autoRefresh, refreshInterval, fetchOrderData]);
 
+  // Socket listener for real-time updates
+  useEffect(() => {
+    initSocket();
+    const unsubscribe = subscribeToDataRefresh((data) => {
+      /* console.log('[OrderTable] Received data refresh event:', data); */
+      fetchOrderData();
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [fetchOrderData]);
+
   // Fetch data on component mount
   useEffect(() => {
     fetchOrderData();
@@ -295,7 +309,7 @@ const TotalRequestsComponent = () => {
       (item) => item.order?.items?.[0]?.status === "Processing"
     );
 
-    console.log("Processing Items:", processingItems);
+    /* console.log("Processing Items:", processingItems); */
 
     // If no processing orders, show a message
     if (processingItems.length === 0) {
@@ -307,18 +321,33 @@ const TotalRequestsComponent = () => {
       return;
     }
 
-    // Get unique order IDs (to prevent duplicates)
-    const orderIds = [
-      ...new Set(processingItems.map((item) => item.order?.id)),
+    // Separate processing orders into shop orders and regular orders
+    const shopOrderIds = [
+      ...new Set(
+        processingItems
+          .filter((item) => item.isShopOrder || item.user?.name === "shop")
+          .map((item) => item.order?.id)
+      ),
     ].filter(Boolean);
 
-    console.log("Unique Order IDs:", orderIds);
+    const regularOrderIds = [
+      ...new Set(
+        processingItems
+          .filter((item) => !item.isShopOrder && item.user?.name !== "shop")
+          .map((item) => item.order?.id)
+      ),
+    ].filter(Boolean);
+
+    const totalCount = shopOrderIds.length + regularOrderIds.length;
+
+    /* console.log("Shop Order IDs:", shopOrderIds); */
+    /* console.log("Regular Order IDs:", regularOrderIds); */
 
     // Confirm with the user
     const { isConfirmed } = await Swal.fire({
       icon: "question",
       title: "Batch Update",
-      text: `Are you sure you want to update ${orderIds.length} orders from 'Processing' to 'Completed'?`,
+      text: `Are you sure you want to update ${totalCount} orders from 'Processing' to 'Completed'?`,
       showCancelButton: true,
       confirmButtonText: "Yes, update all",
       cancelButtonText: "Cancel",
@@ -329,28 +358,38 @@ const TotalRequestsComponent = () => {
     try {
       Swal.fire({
         title: "Processing...",
-        text: `Updating ${orderIds.length} orders to "Completed" status`,
+        text: `Updating ${totalCount} orders to "Completed" status`,
         allowOutsideClick: false,
         didOpen: () => {
           Swal.showLoading();
         },
       });
 
-      // Update each order
-      const updatePromises = orderIds.map((orderId) =>
+      // Update shop orders with isShopOrder flag
+      const shopUpdatePromises = shopOrderIds.map((orderId) =>
         axios.put(`${BASE_URL}/order/orders/${orderId}/status`, {
           status: "Completed",
+          isShopOrder: true,
         })
       );
 
-      await Promise.all(updatePromises);
+      // Update regular orders without isShopOrder flag
+      const regularUpdatePromises = regularOrderIds.map((orderId) =>
+        axios.put(`${BASE_URL}/order/orders/${orderId}/status`, {
+          status: "Completed",
+          isShopOrder: false,
+        })
+      );
+
+      const allOrderIds = [...shopOrderIds, ...regularOrderIds];
+      await Promise.all([...shopUpdatePromises, ...regularUpdatePromises]);
 
       // Update local state
       setAllItems((prevItems) =>
         prevItems.map((item) => {
           if (
             item.order?.items?.[0]?.status === "Processing" &&
-            orderIds.includes(item.order?.id)
+            allOrderIds.includes(item.order?.id)
           ) {
             return {
               ...item,
@@ -370,7 +409,7 @@ const TotalRequestsComponent = () => {
       Swal.fire({
         icon: "success",
         title: "Batch Update Complete",
-        text: `${orderIds.length} orders have been updated to "Completed" status`,
+        text: `${totalCount} orders have been updated to "Completed" status`,
         timer: 2000,
       });
 
@@ -392,30 +431,45 @@ const TotalRequestsComponent = () => {
   // Server handles pagination, so we don't need this effect
   useEffect(() => {
     if (allItems.length > 0) {
-      console.log("Inspecting the first item in allItems:", allItems[0]);
+      /* console.log("Inspecting the first item in allItems:", allItems[0]); */
     }
   }, [allItems]);
 
   // console.log("All Orders", paginatedItems)
 
   const handleViewClickStatus = (orderItemId) => {
-    // Find the item to check if it's cancelled
+    // Find the item to check if it's cancelled or completed
     const item = allItems.find((item) => item.id === orderItemId);
-    if (item?.order?.items?.[0]?.status === "Cancelled") {
+    const currentStatus = item?.order?.items?.[0]?.status;
+    
+    if (currentStatus === "Cancelled" || currentStatus === "Completed") {
       Swal.fire({
         icon: "warning",
         title: "Cannot Update",
-        text: "Cancelled orders cannot be modified.",
+        text: `${currentStatus} orders cannot be modified.`,
       });
       return;
     }
 
-    console.log("Order Item", orderItemId);
+    /* console.log("Order Item", orderItemId); */
     setSelectedOrderId(orderItemId);
     setIsOpenStatus(true);
   };
 
   const handleUpdateStatus = async (orderId) => {
+    // Find the item to check if it's cancelled or completed
+    const item = allItems.find((item) => item.order?.id === orderId);
+    const currentStatus = item?.order?.items?.[0]?.status;
+    
+    if (currentStatus === "Cancelled" || currentStatus === "Completed") {
+      Swal.fire({
+        icon: "warning",
+        title: "Cannot Update",
+        text: `${currentStatus} orders cannot be modified.`,
+      });
+      return;
+    }
+    
     try {
       Swal.fire({
         title: "Processing...",
@@ -437,7 +491,17 @@ const TotalRequestsComponent = () => {
         }),
       };
 
-      await axios.request(config);
+      const response = await axios.request(config);
+      
+      // Check if backend returned success: false (order already completed/cancelled)
+      if (response.data && response.data.success === false) {
+        Swal.fire({
+          icon: "warning",
+          title: "Cannot Update",
+          text: response.data.message || "Order status cannot be changed.",
+        });
+        return;
+      }
 
       // Update local state to reflect the change
       setAllItems((prevItems) =>
@@ -498,7 +562,7 @@ const TotalRequestsComponent = () => {
       return;
     }
 
-    console.log("Selected Order ID:", selectedOrderId);
+    /* console.log("Selected Order ID:", selectedOrderId); */
 
     try {
       Swal.fire({
@@ -521,11 +585,11 @@ const TotalRequestsComponent = () => {
         }
       );
 
-      console.log("API Response:", response.data);
-      console.log("Request payload:", {
+      /* console.log("API Response:", response.data); */
+      /* console.log("Request payload:", {
         orderItemId: selectedOrderId,
         status: selectedStatus,
-      });
+      }) */;
 
       setAllItems((prevItems) =>
         prevItems.map((item) =>
@@ -585,10 +649,29 @@ const TotalRequestsComponent = () => {
       return;
     }
 
-    // Only get IDs of pending orders for status update (processing orders stay unchanged)
-    const pendingOrderIds = [
-      ...new Set(pendingItems.map((item) => item.order?.id)),
+    // Separate pending orders into shop orders and regular orders
+    const pendingShopOrderIds = [
+      ...new Set(
+        pendingItems
+          .filter((item) => item.isShopOrder || item.user?.name === "shop")
+          .map((item) => item.order?.id)
+      ),
     ].filter(Boolean);
+
+    const pendingRegularOrderIds = [
+      ...new Set(
+        pendingItems
+          .filter((item) => !item.isShopOrder && item.user?.name !== "shop")
+          .map((item) => item.order?.id)
+      ),
+    ].filter(Boolean);
+
+    const totalPendingCount = pendingShopOrderIds.length + pendingRegularOrderIds.length;
+    
+    /* console.log("Download Excel - Pending items found:", pendingItems.length);
+    console.log("Download Excel - Shop order IDs:", pendingShopOrderIds);
+    console.log("Download Excel - Regular order IDs:", pendingRegularOrderIds);
+    console.log("Download Excel - Total pending to update:", totalPendingCount); */
 
     // Export phone number and data size for all items (pending + processing)
     const dataToExport = itemsToExport.map((item) => {
@@ -610,32 +693,43 @@ const TotalRequestsComponent = () => {
     XLSX.writeFile(wb, `Orders_${timestamp}.xlsx`);
 
     // After successful download, update the status of pending items to processing
-    if (pendingOrderIds.length > 0) {
+    if (totalPendingCount > 0) {
       try {
         Swal.fire({
           title: "Processing...",
-          text: `Updating ${pendingOrderIds.length} pending orders to "Processing" status. Processing orders remain unchanged.`,
+          text: `Updating ${totalPendingCount} pending orders to "Processing" status. Processing orders remain unchanged.`,
           allowOutsideClick: false,
           didOpen: () => {
             Swal.showLoading();
           },
         });
 
-        // Update each pending order
-        const updatePromises = pendingOrderIds.map((orderId) =>
+        // Update shop orders with isShopOrder flag
+        const shopUpdatePromises = pendingShopOrderIds.map((orderId) =>
           axios.put(`${BASE_URL}/order/orders/${orderId}/status`, {
             status: "Processing",
+            isShopOrder: true,
           })
         );
 
-        await Promise.all(updatePromises);
+        // Update regular orders without isShopOrder flag
+        const regularUpdatePromises = pendingRegularOrderIds.map((orderId) =>
+          axios.put(`${BASE_URL}/order/orders/${orderId}/status`, {
+            status: "Processing",
+            isShopOrder: false,
+          })
+        );
+
+        const allPendingOrderIds = [...pendingShopOrderIds, ...pendingRegularOrderIds];
+        const results = await Promise.all([...shopUpdatePromises, ...regularUpdatePromises]);
+        /* console.log("Status update results:", results.map(r => r.data)); */
 
         // Update local state immediately to reflect changes
         setAllItems((prevItems) =>
           prevItems.map((item) => {
             if (
               item.order?.items?.[0]?.status === "Pending" &&
-              pendingOrderIds.includes(item.order?.id)
+              allPendingOrderIds.includes(item.order?.id)
             ) {
               return {
                 ...item,
@@ -657,7 +751,7 @@ const TotalRequestsComponent = () => {
           prevItems.map((item) => {
             if (
               item.order?.items?.[0]?.status === "Pending" &&
-              pendingOrderIds.includes(item.order?.id)
+              allPendingOrderIds.includes(item.order?.id)
             ) {
               return {
                 ...item,
@@ -677,7 +771,7 @@ const TotalRequestsComponent = () => {
         Swal.fire({
           icon: "success",
           title: "Status Updated",
-          text: `${pendingOrderIds.length} orders have been updated to "Processing" status`,
+          text: `${totalPendingCount} orders have been updated to "Processing" status`,
           timer: 2000,
         });
 
@@ -1396,24 +1490,24 @@ const TableRow = memo(({ item, index, getRowColor, handleViewClickStatus, handle
       <td className="border px-2 py-2 md:px-4 text-center flex items-center justify-center space-x-2">
         <button
           className={`text-blue-500 hover:text-blue-700 mr-2 ${
-            item.order?.items?.[0]?.status === "Cancelled"
+            item.order?.items?.[0]?.status === "Cancelled" || item.order?.items?.[0]?.status === "Completed"
               ? "opacity-50 cursor-not-allowed"
               : ""
           }`}
           onClick={() => handleViewClickStatus(item.id)}
-          disabled={item.order?.items?.[0]?.status === "Cancelled"}
+          disabled={item.order?.items?.[0]?.status === "Cancelled" || item.order?.items?.[0]?.status === "Completed"}
         >
           <SpellCheck className="w-5 h-5" />
         </button>
         <button
           className={`text-green-500 hover:text-green-700 ${
-            item.order?.items?.[0]?.status === "Cancelled"
+            item.order?.items?.[0]?.status === "Cancelled" || item.order?.items?.[0]?.status === "Completed"
               ? "opacity-50 cursor-not-allowed"
               : ""
           }`}
           onClick={() => handleUpdateStatus(item.order?.id)}
           title="Mark as Completed"
-          disabled={item.order?.items?.[0]?.status === "Cancelled"}
+          disabled={item.order?.items?.[0]?.status === "Cancelled" || item.order?.items?.[0]?.status === "Completed"}
         >
           <Check className="w-5 h-5" />
         </button>

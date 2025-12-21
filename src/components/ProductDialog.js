@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Dialog } from "@headlessui/react";
 import axios from "axios";
-import { Edit, Trash, AlertCircle, RotateCcw, Filter } from "lucide-react";
+import { Edit, Trash, AlertCircle, RotateCcw, Filter, Eye, EyeOff } from "lucide-react";
 import Swal from 'sweetalert2';
 import BASE_URL from "../endpoints/endpoints";
 
 const ProductDialog = ({ isDialogOpenProduct, setIsDialogOpenProduct }) => {
+  
   // State management
   const [productId, setProductId] = useState(null);
   const [productName, setProductName] = useState("");
@@ -53,10 +54,10 @@ const ProductDialog = ({ isDialogOpenProduct, setIsDialogOpenProduct }) => {
   // Populate form when editing a product
   const handleEditClick = (product) => {
     setProductId(product.id);
-    setProductName(product.name);
-    setDescription(product.description);
-    setPrice(product.price);
-    setStock(product.stock);
+    setProductName(product.name || "");
+    setDescription(product.description || "");
+    setPrice(product.price ?? "");
+    setStock(product.stock ?? "");
   };
 
   // Handle add or update product
@@ -333,7 +334,7 @@ const ProductDialog = ({ isDialogOpenProduct, setIsDialogOpenProduct }) => {
           };
           
           const response = await axios.request(config);
-          console.log(JSON.stringify(response.data));
+          /* console.log(JSON.stringify(response.data)); */
           
           // Update local state - set all products stock to the specified value
           setProducts(products.map(product => ({ ...product, stock: stockValue })));
@@ -359,6 +360,97 @@ const ProductDialog = ({ isDialogOpenProduct, setIsDialogOpenProduct }) => {
     });
   };
 
+  // Toggle showOnShop for a product
+  const handleToggleShowOnShop = async (productId, currentValue) => {
+    setIsLoading(true);
+    try {
+      await axios.put(`${BASE_URL}/products/toggle-shop/${productId}`, {
+        showOnShop: !currentValue
+      }, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+      
+      // Update local state
+      setProducts(products.map(product => 
+        product.id === productId ? { ...product, showOnShop: !currentValue } : product
+      ));
+      
+      Swal.fire({
+        icon: 'success',
+        title: 'Updated!',
+        text: `Product ${!currentValue ? 'will now show' : 'will not show'} on shop page.`,
+        timer: 2000,
+        showConfirmButton: false
+      });
+    } catch (error) {
+      console.error('Error toggling shop visibility:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Error!',
+        text: 'Failed to update shop visibility.',
+        confirmButtonText: 'OK'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Check if all products are shown on shop
+  const allShownOnShop = useMemo(() => {
+    return products.length > 0 && products.every(product => product.showOnShop);
+  }, [products]);
+
+  // Toggle all products showOnShop
+  const handleToggleAllShowOnShop = async (showAll) => {
+    const actionText = showAll ? "show all" : "hide all";
+    
+    Swal.fire({
+      title: `${showAll ? 'Show All' : 'Hide All'} Products in Shop?`,
+      text: `Are you sure you want to ${actionText} products in the shop?`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonColor: showAll ? "#2563eb" : "#6b7280",
+      cancelButtonColor: "#d1d5db",
+      confirmButtonText: `Yes, ${actionText}`,
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        setIsLoading(true);
+        try {
+          // Update all products
+          const updatePromises = products.map(product => 
+            axios.put(`${BASE_URL}/products/toggle-shop/${product.id}`, {
+              showOnShop: showAll
+            }, {
+              headers: { 'Content-Type': 'application/json' },
+            })
+          );
+          
+          await Promise.all(updatePromises);
+          
+          // Update local state
+          setProducts(products.map(product => ({ ...product, showOnShop: showAll })));
+          
+          Swal.fire({
+            icon: 'success',
+            title: 'Updated!',
+            text: `All products ${showAll ? 'will now show' : 'will not show'} on shop page.`,
+            timer: 2000,
+            showConfirmButton: false
+          });
+        } catch (error) {
+          console.error('Error toggling all shop visibility:', error);
+          Swal.fire({
+            icon: 'error',
+            title: 'Error!',
+            text: 'Failed to update shop visibility for all products.',
+            confirmButtonText: 'OK'
+          });
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    });
+  };
 
   return (
     <Dialog
@@ -395,6 +487,15 @@ const ProductDialog = ({ isDialogOpenProduct, setIsDialogOpenProduct }) => {
               >
                 <RotateCcw className="w-4 h-4" />
                 Set All to One
+              </button>
+              <button
+                onClick={() => handleToggleAllShowOnShop(!allShownOnShop)}
+                className={`flex items-center gap-1 ${allShownOnShop ? 'bg-gray-500 hover:bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'} text-white px-3 py-2 rounded-md text-sm transition-colors`}
+                title={allShownOnShop ? "Hide all products from Shop" : "Show all products in Shop"}
+                disabled={isLoading}
+              >
+                {allShownOnShop ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                {allShownOnShop ? 'Hide All in Shop' : 'Show All in Shop'}
               </button>
             </div>
             
@@ -435,7 +536,7 @@ const ProductDialog = ({ isDialogOpenProduct, setIsDialogOpenProduct }) => {
 
         {/* Form Section */}
         <div className="mb-6 grid gap-4 sm:grid-cols-2">
-          <input type="hidden" value={productId} />
+          <input type="hidden" value={productId ?? ""} />
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Product Name</label>
             <input
@@ -529,13 +630,14 @@ const ProductDialog = ({ isDialogOpenProduct, setIsDialogOpenProduct }) => {
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
+                  <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Shop</th>
                   <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {products.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="px-3 py-4 text-center text-sm text-gray-500">
+                    <td colSpan="7" className="px-3 py-4 text-center text-sm text-gray-500">
                       {isLoading ? (
                         <div className="flex justify-center items-center gap-2">
                           <svg className="animate-spin h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -583,6 +685,21 @@ const ProductDialog = ({ isDialogOpenProduct, setIsDialogOpenProduct }) => {
                         }`}>
                           {product.stock}
                         </span>
+                      </td>
+                      <td className="px-3 py-3 text-sm text-center">
+                        <button
+                          onClick={() => handleToggleShowOnShop(product.id, product.showOnShop)}
+                          disabled={isLoading}
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                            product.showOnShop ? 'bg-green-500' : 'bg-gray-300'
+                          } ${isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                              product.showOnShop ? 'translate-x-6' : 'translate-x-1'
+                            }`}
+                          />
+                        </button>
                       </td>
                       <td className="px-3 py-3 text-sm text-center">
                         <div className="flex justify-center gap-3">

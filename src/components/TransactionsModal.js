@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Dialog } from "@headlessui/react";
 // import { X, Filter, Upload, FileStack } from "lucide-react";
 import { Filter, FileStack } from "lucide-react";
@@ -7,6 +7,7 @@ import axios from "axios";
 import _ from "lodash";
 import BASE_URL from "../endpoints/endpoints";
 import DailySalesCard from "./DailySalesCard";
+import { initSocket, subscribeToDataRefresh } from "../services/socketService";
 
 export default function TransactionsModal() {
   const [isOpen, setIsOpen] = useState(false);
@@ -73,7 +74,7 @@ export default function TransactionsModal() {
       };
 
       const response = await axios.request(config);
-      console.log("API Response:", response.data);
+      // console.log("API Response:", response.data);
       
       if (response.data.success) {
         setTransactions(response.data.data || []);
@@ -216,6 +217,21 @@ export default function TransactionsModal() {
       fetchTransactions();
     }
   }, [userId, isOpen]);
+
+  // Socket listener for real-time updates
+  useEffect(() => {
+    initSocket();
+    const unsubscribe = subscribeToDataRefresh((data) => {
+      // console.log('[TransactionsModal] Received data refresh event:', data);
+      if (isOpen && userId) {
+        fetchTransactions();
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [isOpen, userId]);
 
   // Effect to apply filters when they change
   useEffect(() => {

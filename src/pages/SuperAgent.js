@@ -143,7 +143,7 @@ const SuperAgent = () => {
       const response = await fetch(`${BASE_URL}/api/cart/${userId}`);
       const data = await response.json();
 
-      console.log("Fetched Cart Data:", data);
+      // console.log("Fetched Cart Data:", data);
 
       setCart(Array.isArray(data.items) ? data.items : []);
     } catch (error) {
@@ -152,7 +152,7 @@ const SuperAgent = () => {
     }
   };
 
-  console.log("Cart:", cart);
+  // console.log("Cart:", cart);
 
   useEffect(() => {
     fetchCart();
@@ -228,13 +228,13 @@ const SuperAgent = () => {
       // Get restricted prefixes
       const restrictedPatterns = restrictions[normalizedProductName] || [];
 
-      console.log("User Input:", value);
-      console.log(
+      // console.log("User Input:", value);
+      /* console.log(
         "Restricted Prefixes for",
         normalizedProductName,
         ":",
         restrictedPatterns
-      );
+      ); */
 
       // Check if the number starts with a restricted pattern
       const isRestricted = restrictedPatterns.some((pattern) =>
@@ -669,7 +669,7 @@ const SuperAgent = () => {
     }
   };
 
-  console.log("orderHistory", orderHistory);
+  // console.log("orderHistory", orderHistory);
 
   return (
     <div className="flex h-screen bg-gray-100">

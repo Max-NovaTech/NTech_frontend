@@ -152,7 +152,7 @@ const Login = () => {
             <div className="flex flex-col items-center mb-10">
               <div className="relative mb-6">
                 <div className="absolute inset-0 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-full blur-lg opacity-50 animate-pulse" />
-                  <a href="/landingpage" rel="noreferrer">
+                  <a href="/" rel="noreferrer" className="cursor-pointer hover:opacity-80 transition-opacity">
                   <img
                     src={Logo}
                     alt="Logo"

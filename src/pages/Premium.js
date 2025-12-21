@@ -83,7 +83,7 @@ const Premium = () => {
 
         // Call the logout API
         await axios.request(config);
-        console.log("User logged out successfully from server");
+        // console.log("User logged out successfully from server");
       }
     } catch (error) {
       console.error("Error during server logout:", error);
@@ -180,7 +180,7 @@ const Premium = () => {
       const response = await fetch(`${BASE_URL}/api/cart/${userId}`);
       const data = await response.json();
 
-      console.log("Fetched Cart Data:", data);
+      // console.log("Fetched Cart Data:", data);
 
       setCart(Array.isArray(data.items) ? data.items : []);
     } catch (error) {
@@ -189,7 +189,7 @@ const Premium = () => {
     }
   };
 
-  console.log("Cart:", cart);
+  // console.log("Cart:", cart);
 
   useEffect(() => {
     fetchCart();
@@ -265,13 +265,13 @@ const Premium = () => {
       // Get restricted prefixes
       const restrictedPatterns = restrictions[normalizedProductName] || [];
 
-      console.log("User Input:", value);
-      console.log(
+      // console.log("User Input:", value);
+      /* console.log(
         "Restricted Prefixes for",
         normalizedProductName,
         ":",
         restrictedPatterns
-      );
+      ); */
 
       // Check if the number starts with a restricted pattern
       const isRestricted = restrictedPatterns.some((pattern) =>
@@ -716,7 +716,7 @@ const Premium = () => {
     }
   };
 
-  console.log("orderHistory", orderHistory);
+  // console.log("orderHistory", orderHistory);
 
   return (
     <div className="flex h-screen bg-gray-100">

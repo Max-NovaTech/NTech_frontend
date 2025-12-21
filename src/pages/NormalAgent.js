@@ -143,7 +143,7 @@ const NormalAgent = () => {
       const response = await fetch(`${BASE_URL}/api/cart/${userId}`);
       const data = await response.json();
 
-      console.log("Fetched Cart Data:", data);
+      // console.log("Fetched Cart Data:", data);
 
       setCart(Array.isArray(data.items) ? data.items : []);
     } catch (error) {
@@ -152,7 +152,7 @@ const NormalAgent = () => {
     }
   };
 
-  console.log("Cart:", cart);
+  // console.log("Cart:", cart);
 
   useEffect(() => {
     fetchCart();
@@ -228,13 +228,13 @@ const NormalAgent = () => {
       // Get restricted prefixes
       const restrictedPatterns = restrictions[normalizedProductName] || [];
 
-      console.log("User Input:", value);
-      console.log(
+      //console.log("User Input:", value);
+      /* console.log(
         "Restricted Prefixes for",
         normalizedProductName,
         ":",
         restrictedPatterns
-      );
+      ); */
 
       // Check if the number starts with a restricted pattern
       const isRestricted = restrictedPatterns.some((pattern) =>
@@ -669,7 +669,7 @@ const NormalAgent = () => {
     }
   };
 
-  console.log("orderHistory", orderHistory);
+  //console.log("orderHistory", orderHistory);
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -804,24 +804,6 @@ const NormalAgent = () => {
             </ul>
           </nav>
         </div>
-
-        {/* 🎥 Video Ad Section */}
-        {/* <div className="mb-[100px] p-3 bg-gray-100 rounded-lg text-center">
-          <p className="text-xs text-gray-500">Sponsored Ad</p>
-          <video
-            className="mt-2 rounded-lg w-full hover:opacity-80 transition-opacity duration-300"
-            controls
-            autoPlay
-            loop
-            muted
-          >
-            <source
-              src="https://www.w3schools.com/html/mov_bbb.mp4"
-              type="video/mp4"
-            />
-            Your browser does not support the video tag.
-          </video>
-        </div> */}
       </aside>
 
       <div className="flex-1 flex flex-col ml-0 md:ml-64">
@@ -1053,21 +1035,21 @@ const NormalAgent = () => {
                         : true
                     )
                     .sort((a, b) => {
-  const extractGB = (description) => {
-    const match = description?.match(/(\d+(?:\.\d+)?)\s*GB/i);
-    return match ? parseFloat(match[1]) : Number.MAX_VALUE; // fallback to large number
-  };
+                      const extractGB = (description) => {
+                        const match = description?.match(/(\d+(?:\.\d+)?)\s*GB/i);
+                        return match ? parseFloat(match[1]) : Number.MAX_VALUE; // fallback to large number
+                      };
 
-  // First, group by product.name (e.g., "MTN - NORMAL")
-  if (a.name < b.name) return -1;
-  if (a.name > b.name) return 1;
+                      // First, group by product.name (e.g., "MTN - NORMAL")
+                      if (a.name < b.name) return -1;
+                      if (a.name > b.name) return 1;
 
-  // Then, sort by smallest GIG size
-  const gbA = extractGB(a.description);
-  const gbB = extractGB(b.description);
+                      // Then, sort by smallest GIG size
+                      const gbA = extractGB(a.description);
+                      const gbB = extractGB(b.description);
 
-  return gbA - gbB; // ascending order: 1GB → 2GB → 10GB
-})
+                      return gbA - gbB; // ascending order: 1GB → 2GB → 10GB
+                    })
 
                     .map((product) => (
                       <div

@@ -136,9 +136,12 @@ const NovaTechLanding = () => {
             
             <div className="hidden md:flex items-center space-x-8">
               <a href="#home" className="hover:text-emerald-400 transition-colors">Home</a>
-              <a href="#services" className="hover:text-emerald-400 transition-colors">Services</a>
-              <a href="#packages" className="hover:text-emerald-400 transition-colors">Packages</a>
               <a href="#about" className="hover:text-emerald-400 transition-colors">About</a>
+              <a href="#services" className="hover:text-emerald-400 transition-colors">Services</a>
+              <a href="/shop" className="relative px-6 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full text-white font-semibold animate-pulse hover:animate-none hover:scale-110 hover:shadow-lg hover:shadow-emerald-500/50 transition-all duration-300">
+                <span className="relative z-10">Shop</span>
+                <span className="absolute inset-0 bg-gradient-to-r from-emerald-400 to-teal-400 rounded-full animate-ping opacity-30"></span>
+              </a>
               <button 
                 onClick={handleGetStarted}
                 className="bg-gradient-to-r from-emerald-500 to-teal-600 px-6 py-2 rounded-full hover:shadow-lg hover:shadow-emerald-500/25 transition-all"
@@ -161,9 +164,11 @@ const NovaTechLanding = () => {
           <div className="md:hidden bg-black/95 backdrop-blur-md">
             <div className="px-4 pt-2 pb-4 space-y-2">
               <a href="#home" className="block py-2 hover:text-emerald-400">Home</a>
-              <a href="#services" className="block py-2 hover:text-emerald-400">Services</a>
-              <a href="#packages" className="block py-2 hover:text-emerald-400">Packages</a>
               <a href="#about" className="block py-2 hover:text-emerald-400">About</a>
+              <a href="#services" className="block py-2 hover:text-emerald-400">Services</a>
+              <a href="/shop" className="block py-2 px-3 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-lg text-white font-semibold text-center animate-pulse">
+                Shop
+              </a>
               <button 
                 onClick={handleGetStarted}
                 className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 px-4 py-2 rounded-full mt-4"
@@ -250,15 +255,8 @@ const NovaTechLanding = () => {
                     <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
                   </span>
                 </a>
-                {/* <button 
-                  onClick={handleGetStarted}
-                  
-                >
-                  Get Started Now
-                  <div className="absolute inset-0 bg-gradient-to-r from-emerald-600 to-teal-700 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                </button> */}
                 
-                <a href="#packages" className="px-8 py-4 border-2 border-emerald-400/50 rounded-2xl text-lg font-semibold text-emerald-300 hover:bg-emerald-500/10 hover:border-emerald-400 transition-all duration-300">
+                <a href="/Shop" className="px-8 py-4 border-2 border-emerald-400/50 rounded-2xl text-lg font-semibold text-emerald-300 hover:bg-emerald-500/10 hover:border-emerald-400 transition-all duration-300">
                   View Packages
                 </a>
               </div>
@@ -302,29 +300,50 @@ const NovaTechLanding = () => {
                 </div>
               </div>
 
-              {/* Network Icons Around Logo */}
-              <div className="absolute inset-0 flex items-center justify-center">
+              {/* Rotating Network Icons Container */}
+              <div 
+                className="absolute inset-0 flex items-center justify-center orbit-container"
+              >
                 {networks.map((network, index) => {
                   const angle = (index * 120) - 90; // 120 degrees apart, starting from top
                   const radius = 180;
-                  const x = Math.cos(angle * Math.PI / 180) * radius;
-                  const y = Math.sin(angle * Math.PI / 180) * radius;
                   
                   return (
                     <div
                       key={network.name}
-                      className={`absolute w-16 h-16 bg-gradient-to-r ${network.color} rounded-2xl flex items-center justify-center shadow-lg hover:scale-110 transition-all duration-300 animate-bounce`}
+                      className={`absolute w-16 h-16 bg-gradient-to-r ${network.color} rounded-2xl flex items-center justify-center shadow-lg hover:scale-125 transition-transform duration-300 orbit-icon`}
                       style={{
-                        transform: `translate(${x}px, ${y}px)`,
-                        animationDelay: `${index * 0.5}s`,
-                        animationDuration: "3s"
+                        '--start-angle': `${angle}deg`,
+                        '--radius': `${radius}px`
                       }}
                     >
-                      <span className="text-2xl">{network.logo}</span>
+                      <span className="text-2xl orbit-icon-content">{network.logo}</span>
                     </div>
                   );
                 })}
               </div>
+
+              {/* CSS for orbit animations */}
+              <style>{`
+                .orbit-container {
+                  animation: orbit-spin 12s linear infinite;
+                }
+                .orbit-icon {
+                  transform: rotate(var(--start-angle)) translateX(var(--radius));
+                }
+                .orbit-icon-content {
+                  display: block;
+                  animation: counter-orbit 12s linear infinite;
+                }
+                @keyframes orbit-spin {
+                  from { transform: rotate(0deg); }
+                  to { transform: rotate(360deg); }
+                }
+                @keyframes counter-orbit {
+                  from { transform: rotate(0deg); }
+                  to { transform: rotate(-360deg); }
+                }
+              `}</style>
             </div>
           </div>
         </div>

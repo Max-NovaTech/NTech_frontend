@@ -21,6 +21,7 @@ import {
   Eye,
   EyeOff,
   Search,
+  ClipboardList,
 } from "lucide-react";
 import { Dialog } from "@headlessui/react";
 import ProductDialog from "../components/ProductDialog";
@@ -33,6 +34,7 @@ import PaymentModal from "../components/PaymentModal";
 import TotalRequestsComponent from "../components/OrderTable";
 import Announcement from "../components/Announcement";
 import AuditLog from "../components/AuditLog";
+import ComplaintNotification from "../components/ComplaintNotification";
 // import OrderDialog from "../components/OrderDialog.js";
 
 const AdminDashboard = () => {
@@ -140,9 +142,9 @@ const [isRefunding, setIsRefunding] = useState(false); // Prevent double refund
 
   // Dedicated refund function to add only the refund amount to user's balance
 const handleRefundAmount = async () => {
-  console.log('[REFUND] Handler called');
+  // console.log('[REFUND] Handler called');
   if (isRefunding) {
-    console.log('Refund already in progress, ignoring duplicate click.');
+    // console.log('Refund already in progress, ignoring duplicate click.');
     return;
   }
   setIsRefunding(true);
@@ -181,7 +183,7 @@ const handleRefundAmount = async () => {
     });
     setLoanAmount(""); // Reset input
     fetchUsers();
-    console.log('Refund successful for user:', orderNo, 'amount:', refundAmount);
+    // console.log('Refund successful for user:', orderNo, 'amount:', refundAmount);
   } catch (error) {
     console.error(error);
     Swal.fire({
@@ -240,7 +242,7 @@ const handleRefundAmount = async () => {
         }
       );
 
-      console.log("Response:", response.data);
+      // console.log("Response:", response.data);
 
       // Show success alert
       Swal.fire({
@@ -316,7 +318,7 @@ const handleRefundAmount = async () => {
 
   const handleAddUser = async () => {
     if (!newUser.name || !newUser.email || !newUser.password) {
-      console.log("New user",newUser);
+      // console.log("New user",newUser);
       Swal.fire({
         icon: "error",
         title: "Oops...",
@@ -446,7 +448,7 @@ const filteredOrders = useMemo(() => {
   });
 }, [allItems, selectedDate, startTime, endTime, selectedProduct, selectedStatusMain]);
 
-  console.log("Filter", filteredOrders);
+  // console.log("Filter", filteredOrders);
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -459,7 +461,7 @@ const filteredOrders = useMemo(() => {
         };
         const response = await axios.request(config);
         setUsers(response.data);
-        console.log("Users:", response.data);
+        // console.log("Users:", response.data);
       } catch (error) {
         console.error("Error fetching users:", error);
       }
@@ -626,7 +628,7 @@ const filteredOrders = useMemo(() => {
   const indexOfFirstUser = indexOfLastUser - usersPerPage;
   const currentUsers = filteredUsers.slice(indexOfFirstUser, indexOfLastUser);
 
-  console.log("Current Users:", currentUsers);
+  // console.log("Current Users:", currentUsers);
 
   const paginate = (pageNumber) => setCurrentPage(pageNumber);
 
@@ -641,7 +643,7 @@ const filteredOrders = useMemo(() => {
   const fetchOrderCount = async () => {
     try {
       const response = await axios.get(`${BASE_URL}/order/admin/allorder`);
-      console.log("API Response:", response.data);
+      // console.log("API Response:", response.data);
 
       setOrder(response.data);
       setOrderCount(response.data.length);
@@ -661,7 +663,7 @@ const filteredOrders = useMemo(() => {
         );
 
         setAllItems(itemsList);
-        console.log("Flattened Items List:", itemsList);
+        // console.log("Flattened Items List:", itemsList);
       }
     } catch (error) {
       console.error("Error fetching order count:", error);
@@ -674,8 +676,8 @@ const filteredOrders = useMemo(() => {
     return () => clearInterval(interval);
   }, []);
 
-  console.log("ALl Items", allItems);
-  console.log("ALl Order", orders);
+  // console.log("ALl Items", allItems);
+  // console.log("ALl Order", orders);
 
   useEffect(() => {
     const getTotalProduct = async () => {
@@ -745,7 +747,7 @@ const filteredOrders = useMemo(() => {
       }
     );
 
-    console.log("Updated user:", response.data);
+    // console.log("Updated user:", response.data);
     
     setShowModal(false);
     fetchUsers();
@@ -923,7 +925,7 @@ const filteredOrders = useMemo(() => {
           // Always fetch fresh data after loan operations to ensure UI reflects backend state
           fetchUsers();
           setTimeout(() => {
-            console.log('DEBUG: Users after loan assign:', users);
+            // console.log('DEBUG: Users after loan assign:', users);
           }, 1000);
           Swal.fire("Success", "Loan assigned successfully!", "success");
         }
@@ -943,7 +945,7 @@ const filteredOrders = useMemo(() => {
           // Fetch fresh data from backend
           fetchUsers();
           setTimeout(() => {
-            console.log('DEBUG: Users after loan repayment:', users);
+            // console.log('DEBUG: Users after loan repayment:', users);
           }, 1000);
           Swal.fire("Success", "Loan repayment processed successfully!", "success");
         }
@@ -974,7 +976,7 @@ const filteredOrders = useMemo(() => {
       };
 
       const response = await axios.request(config);
-      console.log(JSON.stringify(response.data));
+      // console.log(JSON.stringify(response.data));
       toast.success("Order status updated successfully!"); // Show success message
 
       fetchOrderCount();
@@ -1012,7 +1014,7 @@ const filteredOrders = useMemo(() => {
         </div>
         <nav>
           <ul className="space-y-4">
-            <li
+            {/* <li
               className="flex items-center space-x-3 p-2 rounded-md hover:bg-gray-700 cursor-pointer"
               onClick={() => {
                 navigate("/admin/users");
@@ -1021,7 +1023,7 @@ const filteredOrders = useMemo(() => {
             >
               <Users className="w-5 h-5" />
               <span>Manage Users</span>
-            </li>
+            </li> */}
 
             <div
               className="flex items-center space-x-3 p-2 rounded-md hover:bg-gray-700 cursor-pointer"
@@ -1061,19 +1063,28 @@ const filteredOrders = useMemo(() => {
       <div className="flex-1 w-full min-w-0 flex flex-col ml-0 md:ml-64">
         {/* Header */}
         <header className="bg-white shadow-md p-4 flex items-center w-full relative">
-          <button className="md:hidden" onClick={() => setIsOpen(true)}>
-            <Menu className="w-6 h-6" />
-          </button>
           <h1 className="text-base md:text-xl font-semibold flex-1 truncate">
             Admin Dashboard
           </h1>
-          <button
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md shadow ml-auto"
-            onClick={() => setShowAuditLog(true)}
-            style={{ minWidth: 120 }}
-          >
-            Audit Log
-          </button>
+          <div className="flex items-center gap-2 ml-auto">
+            <ComplaintNotification />
+            {/* Audit Log Icon */}
+            <button
+              onClick={() => setShowAuditLog(true)}
+              className="relative p-2 hover:bg-gray-100 rounded-full transition-colors"
+              title="View Audit Log"
+            >
+              <ClipboardList className="w-6 h-6 text-gray-700" />
+            </button>
+            {/* Hamburger Menu for Mobile */}
+            <button 
+              className="md:hidden p-2 hover:bg-gray-100 rounded-full transition-colors" 
+              onClick={() => setIsOpen(true)}
+              title="Open Menu"
+            >
+              <Menu className="w-6 h-6 text-gray-700" />
+            </button>
+          </div>
           <AuditLog isOpen={showAuditLog} onClose={() => setShowAuditLog(false)} />
         </header>
 
