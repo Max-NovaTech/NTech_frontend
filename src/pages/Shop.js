@@ -233,6 +233,28 @@ const Shop = () => {
     if (networkFilter === 'Telecel') return name.includes('TELECEL');
     if (networkFilter === 'AirtelTigo') return name.includes('AIRTEL') || name.includes('TIGO');
     return true;
+  }).sort((a, b) => {
+    // Custom sort order: MTN, Teleco, AirtelTigo
+    const aName = a.name.toUpperCase();
+    const bName = b.name.toUpperCase();
+    
+    // Helper function to get sort priority
+    const getPriority = (name) => {
+      if (name.includes('MTN')) return 0;
+      if (name.includes('TELECEL')) return 1;
+      if (name.includes('AIRTEL') || name.includes('TIGO')) return 2;
+      return 3; // Other products
+    };
+    
+    const aPriority = getPriority(aName);
+    const bPriority = getPriority(bName);
+    
+    if (aPriority !== bPriority) {
+      return aPriority - bPriority;
+    }
+    
+    // If same priority, sort alphabetically
+    return aName.localeCompare(bName);
   });
 
   const networkButtons = [
