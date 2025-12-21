@@ -325,8 +325,12 @@ const TotalRequestsComponent = () => {
     const shopOrderIds = [
       ...new Set(
         processingItems
-          .filter((item) => item.isShopOrder || item.user?.name === "shop")
-          .map((item) => item.order?.id)
+          .filter((item) => item.isShopOrder || item.user?.name === "shop" || String(item.order?.id).startsWith('SHOP-'))
+          .map((item) => {
+            // Extract numeric ID from "SHOP-123" format or return as-is
+            const id = String(item.order?.id);
+            return id.startsWith('SHOP-') ? id.substring(5) : id;
+          })
       ),
     ].filter(Boolean);
 
@@ -653,8 +657,12 @@ const TotalRequestsComponent = () => {
     const pendingShopOrderIds = [
       ...new Set(
         pendingItems
-          .filter((item) => item.isShopOrder || item.user?.name === "shop")
-          .map((item) => item.order?.id)
+          .filter((item) => item.isShopOrder || item.user?.name === "shop" || String(item.order?.id).startsWith('SHOP-'))
+          .map((item) => {
+            // Extract numeric ID from "SHOP-123" format or return as-is
+            const id = String(item.order?.id);
+            return id.startsWith('SHOP-') ? id.substring(5) : id;
+          })
       ),
     ].filter(Boolean);
 

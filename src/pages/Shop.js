@@ -102,6 +102,23 @@ const Shop = () => {
 
     setLoading(true);
     try {
+      // First, verify that the transaction amount matches or exceeds the product price
+      const verifyResponse = await axios.post(`${BASE_URL}/api/sms/verify/amount`, {
+        transactionId,
+        productPrice: selectedProduct.price
+      });
+
+      if (!verifyResponse.data.success) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Payment Verification Failed',
+          text: verifyResponse.data.message
+        });
+        setLoading(false);
+        return;
+      }
+
+      // If verification passed, place the order
       await axios.post(`${BASE_URL}/api/shop/order`, {
         fullName,
         phoneNumber,
@@ -130,7 +147,7 @@ const Shop = () => {
       Swal.fire({
         icon: 'error',
         title: 'Order Failed',
-        text: error.response?.data?.error || 'Failed to place order. Please try again.'
+        text: error.response?.data?.message || error.response?.data?.error || 'Failed to place order. Please try again.'
       });
     } finally {
       setLoading(false);

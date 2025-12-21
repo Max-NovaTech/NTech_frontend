@@ -15,6 +15,7 @@ const ProductDialog = ({ isDialogOpenProduct, setIsDialogOpenProduct }) => {
   const [stock, setStock] = useState("");
   const [products, setProducts] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
   // Fetch products from API
   const fetchProducts = async () => {
@@ -395,18 +396,30 @@ const ProductDialog = ({ isDialogOpenProduct, setIsDialogOpenProduct }) => {
     }
   };
 
-  // Check if all products are shown on shop
-  const allShownOnShop = useMemo(() => {
-    return products.length > 0 && products.every(product => product.showOnShop);
-  }, [products]);
+  // Filter products based on search term
+  const filteredProducts = useMemo(() => {
+    if (!searchTerm.trim()) return products;
+    const searchLower = searchTerm.toLowerCase();
+    return products.filter(product =>
+      product.name.toLowerCase().includes(searchLower) ||
+      product.description.toLowerCase().includes(searchLower) ||
+      product.id.toString().includes(searchLower)
+    );
+  }, [products, searchTerm]);
 
-  // Toggle all products showOnShop
+  // Check if all filtered products are shown on shop
+  const allShownOnShop = useMemo(() => {
+    return filteredProducts.length > 0 && filteredProducts.every(product => product.showOnShop);
+  }, [filteredProducts]);
+
+  // Toggle filtered products showOnShop
   const handleToggleAllShowOnShop = async (showAll) => {
     const actionText = showAll ? "show all" : "hide all";
+    const targetProducts = filteredProducts.length > 0 ? filteredProducts : products;
     
     Swal.fire({
       title: `${showAll ? 'Show All' : 'Hide All'} Products in Shop?`,
-      text: `Are you sure you want to ${actionText} products in the shop?`,
+      text: `Are you sure you want to ${actionText} ${targetProducts.length} product(s) in the shop?`,
       icon: "question",
       showCancelButton: true,
       confirmButtonColor: showAll ? "#2563eb" : "#6b7280",
@@ -416,8 +429,8 @@ const ProductDialog = ({ isDialogOpenProduct, setIsDialogOpenProduct }) => {
       if (result.isConfirmed) {
         setIsLoading(true);
         try {
-          // Update all products
-          const updatePromises = products.map(product => 
+          // Update filtered products (or all if no search)
+          const updatePromises = targetProducts.map(product => 
             axios.put(`${BASE_URL}/products/toggle-shop/${product.id}`, {
               showOnShop: showAll
             }, {
@@ -427,13 +440,18 @@ const ProductDialog = ({ isDialogOpenProduct, setIsDialogOpenProduct }) => {
           
           await Promise.all(updatePromises);
           
-          // Update local state
-          setProducts(products.map(product => ({ ...product, showOnShop: showAll })));
+          // Update local state - only update the filtered products
+          const targetProductIds = new Set(targetProducts.map(p => p.id));
+          setProducts(products.map(product => 
+            targetProductIds.has(product.id) 
+              ? { ...product, showOnShop: showAll }
+              : product
+          ));
           
           Swal.fire({
             icon: 'success',
             title: 'Updated!',
-            text: `All products ${showAll ? 'will now show' : 'will not show'} on shop page.`,
+            text: `${targetProducts.length} product(s) ${showAll ? 'will now show' : 'will not show'} on shop page.`,
             timer: 2000,
             showConfirmButton: false
           });
@@ -601,8 +619,22 @@ const ProductDialog = ({ isDialogOpenProduct, setIsDialogOpenProduct }) => {
 
         {/* Products Table Section */}
         <div className="mt-6">
-          <div className="flex justify-between items-center mb-2">
-            <h3 className="text-lg font-medium text-gray-800">Products List</h3>
+          <div className="flex justify-between items-center mb-4 gap-4">
+            <div className="flex items-center gap-3">
+              <h3 className="text-lg font-medium text-gray-800">Products List</h3>
+              <input
+                type="text"
+                placeholder="Search by name, description, or ID..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
+              />
+              {searchTerm && (
+                <span className="text-xs text-gray-600 font-medium">
+                  ({filteredProducts.length} / {products.length})
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <span className="inline-block w-3 h-3 rounded-full bg-yellow-400"></span>
@@ -617,7 +649,7 @@ const ProductDialog = ({ isDialogOpenProduct, setIsDialogOpenProduct }) => {
               
               <div className="bg-gray-100 px-3 py-1 rounded-md">
                 <span className="text-sm text-gray-700">Total Items: </span>
-                <span className="font-bold text-blue-600">{products.length}</span>
+                <span className="font-bold text-blue-600">{searchTerm ? filteredProducts.length : products.length}</span>
               </div>
             </div>
           </div>
@@ -654,8 +686,17 @@ const ProductDialog = ({ isDialogOpenProduct, setIsDialogOpenProduct }) => {
                       )}
                     </td>
                   </tr>
+                ) : filteredProducts.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" className="px-3 py-4 text-center text-sm text-gray-500">
+                      <div className="py-8">
+                        <p className="text-gray-500 text-center">No products match your search</p>
+                        <p className="text-sm text-gray-400 text-center mt-1">Try searching with different keywords</p>
+                      </div>
+                    </td>
+                  </tr>
                 ) : (
-                  products.map((product) => (
+                  filteredProducts.map((product) => (
                     <tr key={product.id} className="hover:bg-gray-50">
                       <td className="px-3 py-3 text-sm text-gray-500">0000{product.id}</td>
                       <td className="px-3 py-3 text-sm text-gray-900 whitespace-nowrap font-medium">
