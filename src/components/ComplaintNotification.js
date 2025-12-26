@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Dialog } from '@headlessui/react';
-import { X, Bell, Check, Clock, AlertCircle, Trash2 } from 'lucide-react';
+import { X, Bell, Check, Clock, AlertCircle, Trash2, MessageCircle } from 'lucide-react';
 import axios from 'axios';
 import Swal from 'sweetalert2';
 import BASE_URL from '../endpoints/endpoints';
@@ -136,6 +136,23 @@ const ComplaintNotification = () => {
     return new Date(dateString).toLocaleString();
   };
 
+  const handleWhatsAppReply = (complaint) => {
+    const complaintDetails = `*Complaint Response*\n\n` +
+      `Hello ${complaint.fullName},\n\n` +
+      `Thank you for contacting us regarding your complaint.\n\n` +
+      `*Complaint Details:*\n` +
+      `Transaction ID: ${complaint.transactionId}\n` +
+      `Product: ${complaint.productName}\n` +
+      `Cost: GHS ${complaint.productCost.toFixed(2)}\n` +
+      `Order Time: ${formatDate(complaint.orderTime)}\n\n` +
+      `*Your Complaint:*\n${complaint.complaint}\n\n` +
+      `*Our Response:*\n[Please type your response here]`;
+    
+    const phoneNumber = complaint.mobileNumber.replace(/^0/, '233').replace(/\D/g, '');
+    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(complaintDetails)}`;
+    window.open(whatsappUrl, "_blank");
+  };
+
   return (
     <>
       {/* Notification Bell Icon */}
@@ -218,6 +235,13 @@ const ComplaintNotification = () => {
                           <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getStatusColor(complaint.status)}`}>
                             {complaint.status}
                           </span>
+                          <button
+                            onClick={() => handleWhatsAppReply(complaint)}
+                            className="p-2 text-gray-400 hover:text-green-500 hover:bg-green-50 rounded-lg transition-colors"
+                            title="Reply via WhatsApp"
+                          >
+                            <MessageCircle className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={() => handleDeleteComplaint(complaint.id)}
                             className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"

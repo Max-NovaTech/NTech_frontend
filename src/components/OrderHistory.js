@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Dialog } from "@headlessui/react";
+import { MessageCircle } from "lucide-react";
 
 const OrderHistory = ({ isHistoryOpen, setIsHistoryOpen, orderHistory }) => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -38,6 +39,22 @@ const OrderHistory = ({ isHistoryOpen, setIsHistoryOpen, orderHistory }) => {
       const amount = typeof price === 'number' ? price : parseFloat(String(price).replace(/[^\d.-]/g, ""));
       return total + (isNaN(amount) ? 0 : amount);
     }, 0);
+
+  const handleWhatsAppShare = (order, item) => {
+    const orderDetails = `*Order Details*\n\n` +
+      `Order ID: ${order.id || "N/A"}\n` +
+      `Item ID: ${item.id || "N/A"}\n` +
+      `Phone: ${item.mobileNumber || "N/A"}\n` +
+      `Date: ${new Date(order.createdAt).toLocaleDateString()}\n` +
+      `Time: ${new Date(order.createdAt).toLocaleTimeString()}\n` +
+      `Item: ${item.product?.name || "Unknown"}\n` +
+      `Bundle Amount: ${item.product?.description || "Unknown"}\n` +
+      `Status: ${item.status}`;
+    
+    const phoneNumber = "233544060817";
+    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(orderDetails)}`;
+    window.open(whatsappUrl, "_blank");
+  };
 
   return (
     <Dialog
@@ -121,8 +138,15 @@ const OrderHistory = ({ isHistoryOpen, setIsHistoryOpen, orderHistory }) => {
                 order.items.map((item) => (
                   <li
                     key={item.id}
-                    className="border p-3 rounded-md shadow-sm bg-white"
+                    className="border p-3 rounded-md shadow-sm bg-white relative"
                   >
+                    <button
+                      onClick={() => handleWhatsAppShare(order, item)}
+                      className="absolute top-2 right-2 bg-green-500 hover:bg-green-600 text-white p-2 rounded-full transition-colors"
+                      title="Share via WhatsApp"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                    </button>
                     <div className="flex items-center space-x-2">
                                           <strong>Order ID:</strong>
                     <p className="text-gray-600">{order.id || "N/A"}</p>

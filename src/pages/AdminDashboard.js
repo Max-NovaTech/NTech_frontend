@@ -22,6 +22,7 @@ import {
   EyeOff,
   Search,
   ClipboardList,
+  Database,
 } from "lucide-react";
 import { Dialog } from "@headlessui/react";
 import ProductDialog from "../components/ProductDialog";
@@ -986,6 +987,76 @@ const filteredOrders = useMemo(() => {
     }
   };
 
+  const handleResetDatabase = async () => {
+    const result = await Swal.fire({
+      title: "Are you absolutely sure?",
+      text: "This will permanently delete all orders, transactions, topups, carts, announcements, and audit logs. User and Product data will be preserved. This action cannot be undone!",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#d33",
+      cancelButtonColor: "#3085d6",
+      confirmButtonText: "Yes, reset database!",
+      cancelButtonText: "Cancel",
+    });
+
+    if (result.isConfirmed) {
+      const textConfirmation = await Swal.fire({
+        title: "Final Confirmation Required",
+        html: `
+          <p class="text-gray-700 mb-4">All tables will be cleared except for <strong>Products</strong> and <strong>User</strong> tables.</p>
+          <p class="text-red-600 font-semibold mb-4">This action is irreversible!</p>
+          <p class="text-gray-700 mb-2">Please type <strong class="text-red-600">"reset the entire database"</strong> to confirm:</p>
+        `,
+        input: "text",
+        inputPlaceholder: "Type here...",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonColor: "#d33",
+        cancelButtonColor: "#3085d6",
+        confirmButtonText: "Confirm Reset",
+        cancelButtonText: "Cancel",
+        inputValidator: (value) => {
+          if (value !== "reset the entire database") {
+            return "You must type exactly: reset the entire database";
+          }
+        },
+      });
+
+      if (textConfirmation.isConfirmed) {
+        try {
+          Swal.fire({
+            title: "Resetting Database...",
+            text: "Please wait while the database is being reset.",
+            allowOutsideClick: false,
+            didOpen: () => {
+              Swal.showLoading();
+            },
+          });
+
+          const response = await axios.post(`${BASE_URL}/api/admin/reset-database`);
+          
+          Swal.fire({
+            icon: "success",
+            title: "Database Reset!",
+            text: response.data.message,
+            timer: 3000,
+            showConfirmButton: true,
+          });
+
+          fetchUsers();
+          fetchOrderCount();
+        } catch (error) {
+          console.error("Error resetting database:", error);
+          Swal.fire({
+            icon: "error",
+            title: "Reset Failed",
+            text: error.response?.data?.message || "Failed to reset database. Please try again.",
+          });
+        }
+      }
+    }
+  };
+
   const totalBalance = users
     .filter((user) =>
       ["USER", "PREMIUM", "SUPER", "NORMAL", "OTHER"].includes((user.role || "").toUpperCase())
@@ -1048,6 +1119,13 @@ const filteredOrders = useMemo(() => {
               <TransactionalAdminModal />
             </div>
 
+            <hr />
+            <li
+              className="flex items-center space-x-3 p-2 rounded-md hover:bg-orange-700 cursor-pointer text-orange-500"
+              onClick={handleResetDatabase}
+            >
+              <Database className="w-5 h-5" /> <span>Reset Database</span>
+            </li>
             <hr />
             <li
               className="flex items-center space-x-3 p-2 rounded-md hover:bg-red-700 cursor-pointer text-red-500"
