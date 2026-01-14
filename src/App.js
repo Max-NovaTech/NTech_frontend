@@ -15,6 +15,9 @@ import Normalagent from './pages/NormalAgent';
 import OtherDashboard from './pages/OtherDashboard';
 import LandingPage from './pages/LandingPage';
 import Shop from './pages/Shop';
+import AgentStorefront from './pages/AgentStorefront';
+import AgentStore from './pages/AgentStore';
+import AgentOrders from './pages/AgentOrders';
 import BASE_URL from './endpoints/endpoints';
 
 // PrivateRoute Component for Role-Based Access
@@ -110,6 +113,15 @@ function App() {
         <Route element={<PrivateRoute allowedRoles={['Other']} />}>
           <Route path="/otherdashboard" element={<OtherDashboard />} />
         </Route>
+
+        {/* Agent Storefront Routes */}
+        <Route element={<PrivateRoute allowedRoles={['PREMIUM', 'NORMAL', 'USER', 'SUPER', 'Other']} />}>
+          <Route path="/storefront" element={<AgentStorefront />} />
+          <Route path="/agent-orders" element={<AgentOrders />} />
+        </Route>
+
+        {/* Public Agent Store Route */}
+        <Route path="/agent-store/:storeSlug" element={<AgentStore />} />
 
         {/* Fallback Route */}
         <Route path="*" element={<Navigate to="/" replace />} />

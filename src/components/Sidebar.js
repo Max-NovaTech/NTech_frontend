@@ -25,17 +25,12 @@ const Sidebar = ({
   const [showAuditLog, setShowAuditLog] = React.useState(false);
   return (
     <aside
-      className={`bg-white w-64 p-5 fixed h-full transition-transform transform ${
+      className={`bg-white w-64 fixed h-full transition-transform transform ${
         isOpen ? "translate-x-0" : "-translate-x-64"
-      } md:translate-x-0 shadow-lg flex flex-col justify-between`}
-      style={{
-        backgroundImage: `url(${bgImage})`,
-        backgroundSize: "contain",
-        backgroundPosition: "bottom",
-        backgroundRepeat: "no-repeat",
-      }}
+      } md:translate-x-0 shadow-lg flex flex-col z-50 overflow-hidden`}
     >
-      <div>
+      {/* Sidebar Header */}
+      <div className="p-5 flex-shrink-0">
         <div className="flex items-center justify-between mb-5">
           <img src={Logo} height={150} width={150} alt="Logo" />
           <button className="md:hidden" onClick={() => setIsOpen(false)}>
@@ -44,9 +39,12 @@ const Sidebar = ({
         </div>
 
         <hr />
+      </div>
 
+      {/* Scrollable Navigation */}
+      <div className="flex-1 overflow-y-auto px-5">
         <nav>
-          <ul className="space-y-4">
+          <ul className="space-y-4 pb-4">
             
             {/* Home */}
             <li
@@ -169,6 +167,15 @@ const Sidebar = ({
             </li>
           </ul>
         </nav>
+      </div>
+
+      {/* Sidebar Footer */}
+      <div className="p-5 flex-shrink-0" style={{
+        backgroundImage: `url(${bgImage})`,
+        backgroundSize: "contain",
+        backgroundPosition: "bottom",
+        backgroundRepeat: "no-repeat",
+      }}>
       </div>
 
       {/* Audit Log Modal */}

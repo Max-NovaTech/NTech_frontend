@@ -14,6 +14,7 @@ import {
   History,
   MessageCircleWarning,
   Upload,
+  Store,
 } from "lucide-react";
 import { Dialog } from "@headlessui/react";
 import Swal from "sweetalert2";
@@ -809,72 +810,123 @@ const handleCategorySelect = (category) => {
       />
 
       <div className="flex-1 flex flex-col ml-0 md:ml-64">
-        <header className="bg-white shadow-md p-4 flex justify-between items-center">
-          <button className="md:hidden" onClick={() => setIsOpen(true)}>
-            <Menu className="w-6 h-6" />
-          </button>
-          <h1 className="text-md font-semibold uppercase whitespace-nowrap">
-            <span className="">WELCOME</span> {loanBalance?.name}
-          </h1>
-          <div className="flex items-center space-x-4">
-            {loanBalance?.hasLoan && (
-              <div
-                className="text-sm text-red-500 mt-2 animate-pulse hidden md:block"
-                // style={{ zIndex: -9999999 }}
-              >
-                <span>Loan Balance: GHS {loanBalance?.adminLoanBalance}</span>
+        <header className="bg-gradient-to-r from-slate-50 to-white shadow-sm border-b border-gray-200 sticky top-0 z-30">
+          <div className="px-4 py-3 md:px-6 md:py-4">
+            <div className="flex items-center justify-between gap-3">
+              {/* Left Section - Menu & Welcome */}
+              <div className="flex items-center gap-3 md:gap-4 min-w-0 flex-1">
+                <button 
+                  className="md:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0" 
+                  onClick={() => setIsOpen(true)}
+                >
+                  <Menu className="w-5 h-5 text-gray-700" />
+                </button>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs text-gray-500 font-medium truncate">
+                    Welcome back
+                  </p>
+                  <p className="text-base md:text-lg font-bold text-gray-900 truncate">
+                    {loanBalance?.name}
+                  </p>
+                </div>
               </div>
-            )}
-            <div
-              className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold px-3 py-2 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out transform hover:-translate-y-1 cursor-pointer md:flex items-center justify-center whitespace-nowrap"
-              onClick={() => setTopUp(true)}
-            >
-              Top Up
-            </div>
 
-            <div className="bg-white p-2 rounded-lg shadow-md border border-gray-300 flex flex-col items-center hidden md:block cursor-pointer transition-all duration-300 ease-in-out transform hover:-translate-y-1">
-              <div className="flex items-center space-x-2">
-                <h2 className="text-sm font-semibold text-gray-700 uppercase">
-                  Wallet :
-                </h2>
-                <div className="text-2xl font-bold text-blue-600 whitespace-nowrap">
-                  GHS{" "}
-                  {parseFloat(Math.abs(loanBalance?.loanBalance)).toFixed(2)}
+              {/* Right Section - Actions */}
+              <div className="flex items-center gap-2 md:gap-2.5 flex-shrink-0">
+                {/* Wallet & Loan - Desktop Only */}
+                <div className="hidden lg:flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg shadow-sm">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                    <div className="flex flex-col">
+                      <span className="text-[10px] text-blue-600 font-medium uppercase tracking-wide">Balance</span>
+                      <span className="text-sm font-bold text-blue-700">
+                        GHS {parseFloat(Math.abs(loanBalance?.loanBalance)).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                  {loanBalance?.hasLoan && (
+                    <div className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-lg shadow-sm">
+                      <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] text-red-600 font-medium uppercase tracking-wide">Loan</span>
+                        <span className="text-sm font-bold text-red-700">
+                          GHS {loanBalance?.adminLoanBalance}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Top Up Button */}
+                <button
+                  onClick={() => setTopUp(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 md:px-4 md:py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-lg shadow-sm hover:shadow-md transition-all text-xs md:text-sm font-semibold"
+                >
+                  <span className="hidden sm:inline">Top Up</span>
+                  <span className="sm:hidden text-base">+</span>
+                </button>
+
+                {/* Shopping Cart */}
+                <button
+                  onClick={() => setIsCartOpen(true)}
+                  className="relative p-2 md:p-2.5 hover:bg-gray-100 rounded-lg transition-all group"
+                >
+                  <ShoppingCart className="w-5 h-5 md:w-5 md:h-5 text-gray-600 group-hover:text-blue-600 transition-colors" />
+                  {cart.length > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 bg-gradient-to-br from-red-500 to-red-600 text-white text-[10px] rounded-full w-4 h-4 md:w-5 md:h-5 flex items-center justify-center font-bold shadow-md">
+                      {cart.length}
+                    </span>
+                  )}
+                </button>
+
+                {/* Order History */}
+                <button
+                  onClick={() => setIsHistoryOpen(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-2 md:px-3 md:py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-sm hover:shadow-md group"
+                >
+                  <History className="w-4 h-4 md:w-4 md:h-4 group-hover:scale-110 transition-transform" />
+                  <span className="hidden lg:inline text-xs md:text-sm font-medium">History</span>
+                </button>
+
+                {/* Storefront */}
+                <button
+                  onClick={() => navigate('/storefront')}
+                  className="flex items-center gap-1.5 px-2.5 py-2 md:px-3 md:py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-all shadow-sm hover:shadow-md group"
+                >
+                  <Store className="w-4 h-4 md:w-4 md:h-4 group-hover:scale-110 transition-transform" />
+                  <span className="hidden lg:inline text-xs md:text-sm font-medium">Store</span>
+                </button>
+
+                {/* Password Change */}
+                <div className="hidden md:block">
+                  <PasswordChange />
                 </div>
               </div>
             </div>
 
-            {/* Shopping Cart */}
-            <div
-              className="relative cursor-pointer"
-              onClick={() => setIsCartOpen(true)}
-            >
-              <ShoppingCart className="w-6 h-6" />
-              {cart.length > 0 && (
-                <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full px-2">
-                  {cart.length}
-                </span>
+            {/* Mobile Wallet & Loan Info */}
+            <div className="lg:hidden mt-3 flex gap-2">
+              <div className="flex-1 flex items-center gap-2 px-3 py-2 bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg shadow-sm">
+                <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></div>
+                <div className="flex-1 flex items-center justify-between">
+                  <span className="text-[10px] text-blue-600 font-semibold uppercase">Balance</span>
+                  <span className="text-sm font-bold text-blue-700">
+                    GHS {parseFloat(Math.abs(loanBalance?.loanBalance)).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+              {loanBalance?.hasLoan && (
+                <div className="flex-1 flex items-center gap-2 px-3 py-2 bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-lg shadow-sm">
+                  <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></div>
+                  <div className="flex-1 flex items-center justify-between">
+                    <span className="text-[10px] text-red-600 font-semibold uppercase">Loan</span>
+                    <span className="text-sm font-bold text-red-700">
+                      GHS {loanBalance?.adminLoanBalance}
+                    </span>
+                  </div>
+                </div>
               )}
             </div>
-
-            {/* Order History Button */}
-            <div
-              onClick={() => setIsHistoryOpen(true)}
-              className="md:hidden block"
-            >
-              <History className="w-5 h-5" />
-            </div>
-            <div
-              className="bg-blue-500 text-white px-3 py-1 rounded-md items-center space-x-2 hidden md:block cursor-pointer"
-              onClick={() => setIsHistoryOpen(true)}
-            >
-              <div className="flex items-center space-x-2">
-                <History className="w-5 h-5" />
-                <span>Order History</span>
-              </div>
-            </div>
-
-            <PasswordChange />
           </div>
         </header>
 
