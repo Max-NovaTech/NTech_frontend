@@ -39,9 +39,7 @@ const AgentStorefront = () => {
   const [isEditPriceOpen, setIsEditPriceOpen] = useState(false);
   
   const [settingsForm, setSettingsForm] = useState({
-    storeName: '',
-    momoNumber: '',
-    momoName: ''
+    storeName: ''
   });
   
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -72,9 +70,7 @@ const AgentStorefront = () => {
       setStorefront(response.data);
       if (response.data) {
         setSettingsForm({
-          storeName: response.data.storeName || '',
-          momoNumber: response.data.momoNumber || '',
-          momoName: response.data.momoName || ''
+          storeName: response.data.storeName || ''
         });
       }
     } catch (error) {
@@ -112,8 +108,8 @@ const AgentStorefront = () => {
   };
 
   const handleSaveSettings = async () => {
-    if (!settingsForm.storeName.trim() || !settingsForm.momoNumber.trim() || !settingsForm.momoName.trim()) {
-      Swal.fire('Error', 'Please fill in all fields', 'error');
+    if (!settingsForm.storeName.trim()) {
+      Swal.fire('Error', 'Please enter a store name', 'error');
       return;
     }
 
@@ -386,7 +382,7 @@ const AgentStorefront = () => {
               </h2>
               {storefront && (
                 <div className="space-y-1 text-gray-600">
-                  <p><span className="text-gray-500">Momo:</span> {storefront.momoNumber} ({storefront.momoName})</p>
+                  {/* <p><span className="text-gray-500">Momo:</span> {storefront.momoNumber} ({storefront.momoName})</p> */}
                 </div>
               )}
             </div>
@@ -560,7 +556,7 @@ const AgentStorefront = () => {
           
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Store Name</label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Store Name *</label>
               <input
                 type="text"
                 value={settingsForm.storeName}
@@ -568,29 +564,9 @@ const AgentStorefront = () => {
                 className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                 placeholder="My Data Store"
               />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Momo Number</label>
-              <input
-                type="tel"
-                value={settingsForm.momoNumber}
-                onChange={(e) => setSettingsForm({...settingsForm, momoNumber: e.target.value.replace(/\D/g, '').slice(0, 10)})}
-                className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                placeholder="0xxxxxxxxx"
-                maxLength={10}
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Momo Name</label>
-              <input
-                type="text"
-                value={settingsForm.momoName}
-                onChange={(e) => setSettingsForm({...settingsForm, momoName: e.target.value})}
-                className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                placeholder="John Doe"
-              />
+              <p className="text-xs text-gray-400 mt-2">
+                Your store name will be visible to customers on your store page.
+              </p>
             </div>
           </div>
           

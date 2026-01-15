@@ -4,6 +4,7 @@ import {
   Home,
   LogOut,
   History,
+  Store,
 } from "lucide-react";
 import TransactionsModal from "./TransactionsModal";
 import UploadExcel from "./UploadExcel";
@@ -12,6 +13,7 @@ import Logo from "../assets/logo-icon.png";
 import bgImage from "../assets/sidefloor.jpg";
 import { Dialog } from "@headlessui/react";
 import AuditLog from "./AuditLog";
+import { useNavigate } from "react-router-dom";
 
 const Sidebar = ({
   isOpen,
@@ -22,6 +24,7 @@ const Sidebar = ({
   setDailySalesOpen,
   onUploadSuccess
 }) => {
+  const navigate = useNavigate();
   const [showAuditLog, setShowAuditLog] = React.useState(false);
   return (
     <aside
@@ -145,18 +148,17 @@ const Sidebar = ({
               <PasteOrders onUploadSuccess={onUploadSuccess} />
             </div>
 
-            {/* Daily Sales */}
-            {/* <li
-              className="flex items-center space-x-3 p-2 rounded-md hover:bg-gray-200 cursor-pointer text-green-600"
+            <li
+              className="flex items-center space-x-3 p-2 rounded-md cursor-pointer hover:bg-purple-100"
               onClick={() => {
-                setDailySalesOpen(true);
+                navigate('/storefront');
                 setIsOpen(false);
               }}
             >
-              <History className="w-5 h-5" />
-              <span>Daily Sales</span>
-            </li> */}
-
+              <Store className="w-5 h-5 text-purple-600" />
+              <span>My Store</span>
+            </li>
+            <hr className="my-5" />
             {/* Logout */}
             <li
               className="flex items-center space-x-3 p-2 rounded-md hover:bg-red-700 cursor-pointer text-black-500"
@@ -187,23 +189,6 @@ const Sidebar = ({
           <AuditLog />
         </div>
       </Dialog> */}
-
-      {/* <div className="mb-[100px] p-3 bg-gray-100 rounded-lg text-center">
-        <p className="text-xs text-gray-500">Sponsored Ad</p>
-        <video
-          className="mt-2 rounded-lg w-full hover:opacity-80 transition-opacity duration-300"
-          controls
-          autoPlay
-          loop
-          muted
-        >
-          <source
-            src="https://www.w3schools.com/html/mov_bbb.mp4"
-            type="video/mp4"
-          />
-          Your browser does not support the video tag.
-        </video>
-      </div> */}
     </aside>
   );
 };

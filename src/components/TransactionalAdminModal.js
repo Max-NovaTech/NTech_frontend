@@ -334,6 +334,7 @@ const TransactionalAdminModal = () => {
     { id: 'sales', name: 'Sales Summary' },
     { id: 'balance', name: 'Admin Balance Sheet' },
     { id: 'shopOrders', name: 'Shop Orders' },
+    { id: 'agentProfits', name: 'Agent Profits' },
   ];
 
   const [isOpen, setIsOpen] = useState(false);
@@ -384,6 +385,15 @@ const TransactionalAdminModal = () => {
   const [shopEndDate, setShopEndDate] = useState("");
   const [shopCurrentPage, setShopCurrentPage] = useState(1);
   const [shopItemsPerPage] = useState(20);
+
+  // Agent profits state
+  const [agentProfits, setAgentProfits] = useState([]);
+  const [agentProfitStats, setAgentProfitStats] = useState(null);
+  const [agentProfitsLoading, setAgentProfitsLoading] = useState(false);
+  const [agentProfitFilter, setAgentProfitFilter] = useState("");
+  const [agentProfitStatusFilter, setAgentProfitStatusFilter] = useState("");
+  const [agentProfitCurrentPage, setAgentProfitCurrentPage] = useState(1);
+  const [agentProfitItemsPerPage] = useState(20);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -524,6 +534,56 @@ const TransactionalAdminModal = () => {
       fetchShopOrders();
     }
   }, [isOpen, fetchShopOrders]);
+
+  // Fetch agent profits
+  const fetchAgentProfits = useCallback(async () => {
+    try {
+      setAgentProfitsLoading(true);
+      const params = new URLSearchParams();
+      if (agentProfitStatusFilter) params.append('status', agentProfitStatusFilter);
+      
+      const [profitsRes, statsRes] = await Promise.all([
+        axios.get(`${BASE_URL}/api/agent/profits?${params}`),
+        axios.get(`${BASE_URL}/api/agent/profits/stats`)
+      ]);
+      
+      setAgentProfits(profitsRes.data || []);
+      setAgentProfitStats(statsRes.data || null);
+    } catch (error) {
+      console.error("Error fetching agent profits:", error);
+    } finally {
+      setAgentProfitsLoading(false);
+    }
+  }, [agentProfitStatusFilter]);
+
+  // Fetch agent profits when tab is active
+  useEffect(() => {
+    if (isOpen && activeTab === 'agentProfits') {
+      fetchAgentProfits();
+    }
+  }, [isOpen, activeTab, fetchAgentProfits]);
+
+  // Handle deposit agent profit
+  const handleDepositProfit = async (profitId) => {
+    try {
+      await axios.post(`${BASE_URL}/api/agent/profits/${profitId}/deposit`);
+      fetchAgentProfits();
+    } catch (error) {
+      console.error("Error depositing profit:", error);
+      alert(error.response?.data?.error || 'Failed to deposit profit');
+    }
+  };
+
+  // Handle send cash agent profit
+  const handleSendCashProfit = async (profitId) => {
+    try {
+      await axios.post(`${BASE_URL}/api/agent/profits/${profitId}/send-cash`);
+      fetchAgentProfits();
+    } catch (error) {
+      console.error("Error sending cash:", error);
+      alert(error.response?.data?.error || 'Failed to mark as sent');
+    }
+  };
 
   // Socket listener for real-time updates
   useEffect(() => {
@@ -1487,6 +1547,150 @@ const TransactionalAdminModal = () => {
                                   </button>
                                 </div>
                               )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Agent Profits Tab */}
+                      {activeTab === 'agentProfits' && (
+                        <div>
+                          <h3 className="text-lg font-semibold mb-4 text-gray-900">Agent Profits Overview</h3>
+                          
+                          {/* Stats Cards */}
+                          {agentProfitStats && (
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                                <div className="text-sm text-blue-800 font-medium">Total Profit</div>
+                                <div className="text-2xl font-bold text-blue-600">
+                                  {formatAmount(agentProfitStats.totalProfit || 0)}
+                                </div>
+                              </div>
+                              <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                                <div className="text-sm text-yellow-800 font-medium">Pending Profit</div>
+                                <div className="text-2xl font-bold text-yellow-600">
+                                  {formatAmount(agentProfitStats.pendingProfit || 0)}
+                                </div>
+                              </div>
+                              <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                                <div className="text-sm text-green-800 font-medium">Deposited Profit</div>
+                                <div className="text-2xl font-bold text-green-600">
+                                  {formatAmount(agentProfitStats.depositedProfit || 0)}
+                                </div>
+                              </div>
+                              <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                                <div className="text-sm text-purple-800 font-medium">Sent (Cash)</div>
+                                <div className="text-2xl font-bold text-purple-600">
+                                  {formatAmount(agentProfitStats.sentProfit || 0)}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Filters */}
+                          <div className="flex flex-wrap gap-2 mb-4">
+                            <input
+                              type="text"
+                              placeholder="Search agent..."
+                              value={agentProfitFilter}
+                              onChange={(e) => setAgentProfitFilter(e.target.value)}
+                              className="px-3 py-2 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <select
+                              value={agentProfitStatusFilter}
+                              onChange={(e) => setAgentProfitStatusFilter(e.target.value)}
+                              className="px-3 py-2 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              <option value="">All Status</option>
+                              <option value="Pending">Pending</option>
+                              <option value="Deposited">Deposited</option>
+                              <option value="Sent">Sent</option>
+                            </select>
+                          </div>
+
+                          {agentProfitsLoading ? (
+                            <div className="text-center py-8 text-gray-500">
+                              Loading agent profits...
+                            </div>
+                          ) : agentProfits.length === 0 ? (
+                            <div className="text-center py-8 text-gray-500">
+                              No agent profits found.
+                            </div>
+                          ) : (
+                            <div className="overflow-x-auto">
+                              <table className="min-w-full text-sm">
+                                <thead className="bg-gray-50">
+                                  <tr>
+                                    <th className="px-4 py-2 text-left border">ID</th>
+                                    <th className="px-4 py-2 text-left border">Agent</th>
+                                    <th className="px-4 py-2 text-left border">Order Ref</th>
+                                    <th className="px-4 py-2 text-right border">Customer Price</th>
+                                    <th className="px-4 py-2 text-right border">Admin Price</th>
+                                    <th className="px-4 py-2 text-right border">Profit</th>
+                                    <th className="px-4 py-2 text-left border">Status</th>
+                                    <th className="px-4 py-2 text-left border">Date</th>
+                                    <th className="px-4 py-2 text-center border">Actions</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {agentProfits
+                                    .filter(p => !agentProfitFilter || p.agent?.name?.toLowerCase().includes(agentProfitFilter.toLowerCase()))
+                                    .slice((agentProfitCurrentPage - 1) * agentProfitItemsPerPage, agentProfitCurrentPage * agentProfitItemsPerPage)
+                                    .map((profit, index) => (
+                                    <tr key={profit.id} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                                      <td className="px-4 py-2 border">{profit.id}</td>
+                                      <td className="px-4 py-2 border font-medium">{profit.agent?.name || "N/A"}</td>
+                                      <td className="px-4 py-2 border text-xs">{profit.orderReference}</td>
+                                      <td className="px-4 py-2 border text-right">{formatAmount(profit.customerPrice)}</td>
+                                      <td className="px-4 py-2 border text-right">{formatAmount(profit.adminPrice)}</td>
+                                      <td className="px-4 py-2 border text-right font-semibold text-green-600">
+                                        {formatAmount(profit.profit)}
+                                      </td>
+                                      <td className="px-4 py-2 border">
+                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                          profit.status === "Deposited" ? "bg-green-100 text-green-800" :
+                                          profit.status === "Sent" ? "bg-purple-100 text-purple-800" :
+                                          "bg-yellow-100 text-yellow-800"
+                                        }`}>
+                                          {profit.status}
+                                        </span>
+                                      </td>
+                                      <td className="px-4 py-2 border whitespace-nowrap">
+                                        {formatDate(profit.createdAt)}
+                                      </td>
+                                      <td className="px-4 py-2 border text-center">
+                                        {profit.status === "Pending" && (
+                                          <div className="flex gap-1 justify-center">
+                                            <button
+                                              onClick={() => handleDepositProfit(profit.id)}
+                                              className="px-2 py-1 bg-green-500 text-white text-xs rounded hover:bg-green-600"
+                                              title="Deposit to agent wallet"
+                                            >
+                                              Deposit
+                                            </button>
+                                            <button
+                                              onClick={() => handleSendCashProfit(profit.id)}
+                                              className="px-2 py-1 bg-purple-500 text-white text-xs rounded hover:bg-purple-600"
+                                              title="Mark as cash sent"
+                                            >
+                                              Send Cash
+                                            </button>
+                                          </div>
+                                        )}
+                                        {profit.status !== "Pending" && (
+                                          <span className="text-gray-400 text-xs">Processed</span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                              
+                              {/* Summary */}
+                              <div className="mt-4 text-sm text-gray-600">
+                                Total: {agentProfits.length} profit records | 
+                                Total Profit: {formatAmount(agentProfits.reduce((sum, p) => sum + (p.profit || 0), 0))}
+                              </div>
                             </div>
                           )}
                         </div>

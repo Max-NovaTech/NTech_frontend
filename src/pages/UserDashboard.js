@@ -889,13 +889,13 @@ const handleCategorySelect = (category) => {
                 </button>
 
                 {/* Storefront */}
-                <button
+                {/* <button
                   onClick={() => navigate('/storefront')}
                   className="flex items-center gap-1.5 px-2.5 py-2 md:px-3 md:py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-all shadow-sm hover:shadow-md group"
                 >
                   <Store className="w-4 h-4 md:w-4 md:h-4 group-hover:scale-110 transition-transform" />
                   <span className="hidden lg:inline text-xs md:text-sm font-medium">Store</span>
-                </button>
+                </button> */}
 
                 {/* Password Change */}
                 <div className="hidden md:block">

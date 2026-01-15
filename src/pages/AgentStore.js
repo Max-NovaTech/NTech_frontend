@@ -106,7 +106,7 @@ const AgentStore = () => {
       Swal.fire({
         icon: 'success',
         title: 'Order Placed!',
-        text: 'Your order has been submitted. The agent will verify your payment and process your order.',
+        text: 'Your order has been submitted successfully.',
         confirmButtonColor: '#10b981'
       });
       
@@ -405,7 +405,7 @@ const AgentStore = () => {
             <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-3 mt-2">
               <p className="text-xs text-orange-300">
                 <strong>Note:</strong> Send exactly GHS {selectedProduct?.customPrice?.toFixed(2)} to the Momo number above, 
-                then enter your transaction ID. The agent will verify your payment before processing.
+                then enter your transaction ID. Your payment will be verified automatically and your order will be processed shortly.
               </p>
             </div>
 

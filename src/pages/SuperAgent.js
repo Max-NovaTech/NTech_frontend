@@ -849,7 +849,18 @@ const SuperAgent = () => {
                 <PasteOrders onUploadSuccess={fetchCart} />
               </div>
 
-              {/* <hr className="my-5" /> */}
+              <li
+                className="flex items-center space-x-3 p-2 rounded-md cursor-pointer hover:bg-purple-100"
+                onClick={() => {
+                  navigate('/storefront');
+                  setIsOpen(false);
+                }}
+              >
+                <Store className="w-5 h-5 text-purple-600" />
+                <span>My Store</span>
+              </li>
+
+              <hr className="my-5" />
 
               <li
                 className="flex items-center space-x-3 p-2 rounded-md hover:bg-red-700 cursor-pointer text-black-500"
@@ -970,13 +981,13 @@ const SuperAgent = () => {
                 </button>
 
                 {/* Storefront */}
-                <button
+                {/* <button
                   onClick={() => navigate('/storefront')}
                   className="flex items-center gap-1.5 px-2.5 py-2 md:px-3 md:py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-all shadow-sm hover:shadow-md group"
                 >
                   <Store className="w-4 h-4 md:w-4 md:h-4 group-hover:scale-110 transition-transform" />
                   <span className="hidden lg:inline text-xs md:text-sm font-medium">Store</span>
-                </button>
+                </button> */}
 
                 {/* Notifications */}
                 <button
